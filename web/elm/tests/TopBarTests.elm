@@ -1376,7 +1376,7 @@ all =
                 toggleMsg =
                     ApplicationMsgs.Update <|
                         Msgs.Click <|
-                            Msgs.PipelineButton
+                            Msgs.PipelineButton Msgs.AllPipelinesSection
                                 pipelineIdentifier
             in
             [ defineHoverBehaviour
@@ -1412,7 +1412,7 @@ all =
                                 }
                     }
                 , hoverable =
-                    Msgs.PipelineButton { pipelineName = "p", teamName = "t" }
+                    Msgs.PipelineButton Msgs.AllPipelinesSection { pipelineName = "p", teamName = "t" }
                 }
             , defineHoverBehaviour
                 { name = "play pipeline icon when unauthenticated"
@@ -1447,7 +1447,7 @@ all =
                                 }
                     }
                 , hoverable =
-                    Msgs.PipelineButton { pipelineName = "p", teamName = "t" }
+                    Msgs.PipelineButton Msgs.AllPipelinesSection { pipelineName = "p", teamName = "t" }
                 }
             , defineHoverBehaviour
                 { name = "play pipeline icon when unauthorized"
@@ -1490,7 +1490,7 @@ all =
                         ]
                     }
                 , hoverable =
-                    Msgs.PipelineButton { pipelineName = "p", teamName = "t" }
+                    Msgs.PipelineButton Msgs.AllPipelinesSection { pipelineName = "p", teamName = "t" }
                 }
             , test "clicking play button sends TogglePipelinePaused msg" <|
                 \_ ->
