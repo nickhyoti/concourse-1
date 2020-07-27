@@ -22,8 +22,8 @@ import Expect
 import Html.Attributes as Attr
 import Http
 import Message.Callback as Callback
-import Message.Effects as Effects exposing (sideBarSectionName)
-import Message.Message as Message exposing (SideBarSection(..))
+import Message.Effects as Effects exposing (pipelinesSectionName)
+import Message.Message as Message exposing (PipelinesSection(..))
 import Message.Subscription as Subscription
 import Message.TopLevelMessage as TopLevelMessage
 import Routes
@@ -380,7 +380,7 @@ hasSideBar iAmLookingAtThePage =
         , test "team header is clickable" <|
             given iHaveAnOpenSideBar_
                 >> when iAmLookingAtTheTeamHeader
-                >> then_ (itIsClickable <| Message.SideBarTeam AllPipelines "team")
+                >> then_ (itIsClickable <| Message.SideBarTeam AllPipelinesSection "team")
         , test "there is a minus icon when group is clicked" <|
             given iHaveAnOpenSideBar_
                 >> given iClickedThePipelineGroup
@@ -526,7 +526,7 @@ hasSideBar iAmLookingAtThePage =
                     [ style "opacity" "0.4" ]
                 }
             , hoverable =
-                Message.SideBarPipeline AllPipelines
+                Message.SideBarPipeline AllPipelinesSection
                     { pipelineName = "pipeline"
                     , teamName = "team"
                     }
@@ -1043,7 +1043,7 @@ iSeeItEllipsizesLongText =
 iSeeItHasAValidTeamId =
     Query.has
         [ id <|
-            (sideBarSectionName AllPipelines
+            (pipelinesSectionName AllPipelinesSection
                 ++ "_"
                 ++ Base64.encode "team"
             )
@@ -1053,7 +1053,7 @@ iSeeItHasAValidTeamId =
 iSeeItHasAValidPipelineId =
     Query.has
         [ id <|
-            (sideBarSectionName AllPipelines
+            (pipelinesSectionName AllPipelinesSection
                 ++ "_"
                 ++ Base64.encode "team"
                 ++ "_"
@@ -1107,7 +1107,10 @@ iSeeFilledStarIcon =
 iClickedThePipelineGroup =
     Tuple.first
         >> Application.update
-            (TopLevelMessage.Update <| Message.Click <| Message.SideBarTeam AllPipelines "team")
+            (TopLevelMessage.Update <|
+                Message.Click <|
+                    Message.SideBarTeam AllPipelinesSection "team"
+            )
 
 
 iClickedTheFirstPipelineStar =
@@ -1170,7 +1173,7 @@ iHoveredTheFirstPipelineLink =
             (TopLevelMessage.Update <|
                 Message.Hover <|
                     Just <|
-                        Message.SideBarPipeline AllPipelines
+                        Message.SideBarPipeline AllPipelinesSection
                             { teamName = "team"
                             , pipelineName = "pipeline"
                             }
@@ -1522,7 +1525,7 @@ iHoveredThePipelineLink =
             (TopLevelMessage.Update <|
                 Message.Hover <|
                     Just <|
-                        Message.SideBarPipeline AllPipelines
+                        Message.SideBarPipeline AllPipelinesSection
                             { pipelineName = "pipeline"
                             , teamName = "team"
                             }
@@ -1559,7 +1562,7 @@ iClickedTheOtherPipelineGroup =
         >> Application.update
             (TopLevelMessage.Update <|
                 Message.Click <|
-                    Message.SideBarTeam AllPipelines "other-team"
+                    Message.SideBarTeam AllPipelinesSection "other-team"
             )
 
 

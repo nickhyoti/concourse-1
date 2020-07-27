@@ -8,7 +8,7 @@ import Data
 import Expect
 import HoverState exposing (TooltipPosition(..))
 import Html exposing (Html)
-import Message.Message exposing (DomID(..), Message, SideBarSection(..))
+import Message.Message exposing (DomID(..), Message, PipelinesSection(..))
 import Set
 import SideBar.Pipeline as Pipeline
 import SideBar.Styles as Styles
@@ -160,7 +160,7 @@ all =
                         |> viewPipeline { defaultState | isFavoritesSection = False }
                         |> .domID
                         |> Expect.equal
-                            (SideBarPipeline AllPipelines
+                            (SideBarPipeline AllPipelinesSection
                                 { teamName = "team"
                                 , pipelineName = "pipeline"
                                 }
@@ -173,7 +173,7 @@ all =
                         |> viewPipeline { defaultState | isFavoritesSection = True }
                         |> .domID
                         |> Expect.equal
-                            (SideBarPipeline Favorites
+                            (SideBarPipeline FavoritesSection
                                 { teamName = "team"
                                 , pipelineName = "pipeline"
                                 }
@@ -199,7 +199,7 @@ viewPipeline { active, hovered, favorited, isFavoritesSection } p =
 
         hoveredDomId =
             if hovered then
-                HoverState.Hovered (SideBarPipeline AllPipelines pipelineIdentifier)
+                HoverState.Hovered (SideBarPipeline AllPipelinesSection pipelineIdentifier)
 
             else
                 HoverState.NoHover
