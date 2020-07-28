@@ -38,7 +38,7 @@ import Expect exposing (Expectation)
 import Html.Attributes as Attr
 import Message.Callback as Callback
 import Message.Effects as Effects
-import Message.Message as Msgs exposing (PipelinesSection(..))
+import Message.Message as Msgs exposing (DomID(..), PipelinesSection(..))
 import Message.Subscription exposing (Delivery(..), Interval(..))
 import Message.TopLevelMessage as ApplicationMsgs
 import Set
@@ -2250,7 +2250,7 @@ all =
                                        ]
                             }
                         , hoverable =
-                            Msgs.PipelineButton AllPipelinesSection
+                            Msgs.PipelineCardPauseToggle AllPipelinesSection
                                 { pipelineName = "pipeline"
                                 , teamName = "team"
                                 }
@@ -2303,7 +2303,7 @@ all =
                                        ]
                             }
                         , hoverable =
-                            Msgs.PipelineButton FavoritesSection
+                            Msgs.PipelineCardPauseToggle FavoritesSection
                                 { pipelineName = "pipeline"
                                 , teamName = "team"
                                 }
@@ -2355,7 +2355,7 @@ all =
                                        ]
                             }
                         , hoverable =
-                            Msgs.PipelineButton AllPipelinesSection
+                            Msgs.PipelineCardPauseToggle AllPipelinesSection
                                 { pipelineName = "pipeline"
                                 , teamName = "team"
                                 }
@@ -2391,7 +2391,7 @@ all =
                                 |> Event.expect
                                     (ApplicationMsgs.Update <|
                                         Msgs.Click <|
-                                            Msgs.PipelineButton AllPipelinesSection
+                                            Msgs.PipelineCardPauseToggle AllPipelinesSection
                                                 { pipelineName = "pipeline"
                                                 , teamName = "team"
                                                 }
@@ -2416,7 +2416,7 @@ all =
                                 |> Application.update
                                     (ApplicationMsgs.Update <|
                                         Msgs.Click <|
-                                            Msgs.PipelineButton AllPipelinesSection
+                                            Msgs.PipelineCardPauseToggle AllPipelinesSection
                                                 { pipelineName = "pipeline"
                                                 , teamName = "team"
                                                 }
@@ -2441,7 +2441,7 @@ all =
                                 |> Application.update
                                     (ApplicationMsgs.Update <|
                                         Msgs.Click <|
-                                            Msgs.PipelineButton AllPipelinesSection
+                                            Msgs.PipelineCardPauseToggle AllPipelinesSection
                                                 { pipelineName = "pipeline"
                                                 , teamName = "team"
                                                 }
@@ -2470,7 +2470,7 @@ all =
                                 |> Application.update
                                     (ApplicationMsgs.Update <|
                                         Msgs.Click <|
-                                            Msgs.PipelineButton AllPipelinesSection
+                                            Msgs.PipelineCardPauseToggle AllPipelinesSection
                                                 { pipelineName = "pipeline"
                                                 , teamName = "team"
                                                 }
@@ -2500,7 +2500,7 @@ all =
                                 |> Application.update
                                     (ApplicationMsgs.Update <|
                                         Msgs.Click <|
-                                            Msgs.PipelineButton AllPipelinesSection
+                                            Msgs.PipelineCardPauseToggle AllPipelinesSection
                                                 { pipelineName = "pipeline"
                                                 , teamName = "team"
                                                 }
