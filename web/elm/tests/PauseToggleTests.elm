@@ -1,6 +1,7 @@
 module PauseToggleTests exposing (all)
 
 import Dict
+import Message.Message exposing (PipelinesSection(..))
 import Test exposing (Test, describe, test)
 import Test.Html.Query as Query
 import Test.Html.Selector exposing (containing, style, tag, text)
@@ -39,6 +40,7 @@ all =
                         , margin = ""
                         , userState = userState
                         , tooltipPosition = Styles.Above
+                        , section = AllPipelinesSection
                         }
                         |> Query.fromHtml
                         |> Query.has [ style "opacity" "0.2" ]
@@ -52,6 +54,7 @@ all =
                         , margin = ""
                         , userState = userState
                         , tooltipPosition = Styles.Above
+                        , section = AllPipelinesSection
                         }
                         |> Query.fromHtml
                         |> Query.has
@@ -79,6 +82,7 @@ all =
                         , margin = ""
                         , userState = userState
                         , tooltipPosition = Styles.Below
+                        , section = AllPipelinesSection
                         }
                         |> Query.fromHtml
                         |> Query.has
