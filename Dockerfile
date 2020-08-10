@@ -8,6 +8,9 @@ FROM concourse/dev
 WORKDIR /src
 COPY go.mod .
 COPY go.sum .
+COPY certs/server.key .
+COPY certs/server.crt .
+COPY certs/ca.crt .
 RUN grep '^replace' go.mod || go mod download
 
 # build Concourse without using 'packr' and set up a volume so the web assets
