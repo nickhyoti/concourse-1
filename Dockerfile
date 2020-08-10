@@ -3,6 +3,29 @@
 
 FROM concourse/dev AS base
 
+
+# download go modules separately so this doesn't re-run on every change
+WORKDIR /src
+COPY go.mod .
+COPY go.sum .
+COPY certs/server.key .
+COPY certs/server.crt .
+COPY certs/ca.crt .
+RUN grep '^replace' go.mod || go mod download
+
+# build Concourse without using 'packr' and set up a volume so the web assets
+# live-update
+COPY . .
+RUN go build -gcflags=all="-N -l" -o /usr/local/concourse/bin/concourse \
+      ./cmd/concourse
+VOLUME /src
+
+
+# build the init executable for containerd
+RUN  set -x && \
+	gcc -O2 -static -o /usr/local/concourse/bin/init ./cmd/init/init.c
+
+
 # generate keys (with 1024 bits just so they generate faster)
 RUN mkdir -p /concourse-keys
 RUN concourse generate-key -t rsa -b 1024 -f /concourse-keys/session_signing_key
