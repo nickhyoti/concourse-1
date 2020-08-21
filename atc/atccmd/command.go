@@ -109,7 +109,7 @@ type RunCommand struct {
 	TLSBindPort uint16    `long:"tls-bind-port" description:"Port on which to listen for HTTPS traffic."`
 	TLSCert     flag.File `long:"tls-cert"      description:"File containing an SSL certificate."`
 	TLSKey      flag.File `long:"tls-key"       description:"File containing an RSA private key, used to encrypt HTTPS traffic."`
-	MTLSCert    flag.File `long:"mtls-cert"     description:"enable mTLS use file for Cert"`
+	TLSCaCert   flag.File `long:"tls-ca-cert"   description:"File containing the client CA certificate, enables mTLS"`
 
 	LetsEncrypt struct {
 		Enable  bool     `long:"enable-lets-encrypt"   description:"Automatically configure TLS certificates via Let's Encrypt/ACME."`
@@ -1211,7 +1211,6 @@ func (cmd *RunCommand) constructWebHandler(logger lager.Logger) (http.Handler, e
 func (cmd *RunCommand) skyHttpClient() (*http.Client, error) {
 	httpClient := http.DefaultClient
 
-
 	if cmd.isTLSEnabled() {
 		certpool, err := x509.SystemCertPool()
 		if err != nil {
@@ -1231,31 +1230,11 @@ func (cmd *RunCommand) skyHttpClient() (*http.Client, error) {
 
 			certpool.AddCert(x509Cert)
 		}
-		if cmd.isMTLSEnabled() {
 
-			clientCACert, err := ioutil.ReadFile(string(cmd.MTLSCert))
-			if err != nil {
-				return nil, err
-			}
-			clientCertPool := x509.NewCertPool()
-			clientCertPool.AppendCertsFromPEM(clientCACert)
-
-			httpClient.Transport = &http.Transport{
-				TLSClientConfig: &tls.Config{
-					RootCAs:                  certpool,
-					ClientAuth:               tls.RequireAndVerifyClientCert,
-					ClientCAs:                clientCertPool,
-					PreferServerCipherSuites: true,
-					MinVersion:               tls.VersionTLS12,
-				},
-			}
-
-		} else {
-			httpClient.Transport = &http.Transport{
-				TLSClientConfig: &tls.Config{
-					RootCAs: certpool,
-				},
-			}
+		httpClient.Transport = &http.Transport{
+			TLSClientConfig: &tls.Config{
+				RootCAs: certpool,
+			},
 		}
 	} else {
 		httpClient.Transport = http.DefaultTransport
@@ -1293,6 +1272,19 @@ func (cmd *RunCommand) tlsConfig(logger lager.Logger, dbConn db.Conn) (*tls.Conf
 
 	if cmd.isTLSEnabled() {
 		tlsLogger := logger.Session("tls-enabled")
+
+		if cmd.isMTLSEnabled() {
+			clientCACert, err := ioutil.ReadFile(string(cmd.TLSCaCert))
+			if err != nil {
+				return nil, err
+			}
+			clientCertPool := x509.NewCertPool()
+			clientCertPool.AppendCertsFromPEM(clientCACert)
+
+			tlsConfig.ClientAuth = tls.RequireAndVerifyClientCert
+			tlsConfig.ClientCAs = clientCertPool
+		}
+
 		if cmd.LetsEncrypt.Enable {
 			tlsLogger.Debug("using-autocert-manager")
 
@@ -1316,7 +1308,6 @@ func (cmd *RunCommand) tlsConfig(logger lager.Logger, dbConn db.Conn) (*tls.Conf
 			}
 			tlsConfig.Certificates = []tls.Certificate{cert}
 		}
-
 	}
 	return tlsConfig, nil
 }
@@ -1927,6 +1918,7 @@ func (cmd *RunCommand) appendStaticWorker(
 func (cmd *RunCommand) isTLSEnabled() bool {
 	return cmd.TLSBindPort != 0
 }
+
 func (cmd *RunCommand) isMTLSEnabled() bool {
-	return string(cmd.MTLSCert) != ""
+	return string(cmd.TLSCaCert) != ""
 }
