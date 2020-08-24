@@ -25,6 +25,19 @@ type FakeCheckDelegate struct {
 		arg1 lager.Logger
 		arg2 bool
 	}
+	ImageSourceRedactionStub        func(atc.Source) (atc.Source, error)
+	imageSourceRedactionMutex       sync.RWMutex
+	imageSourceRedactionArgsForCall []struct {
+		arg1 atc.Source
+	}
+	imageSourceRedactionReturns struct {
+		result1 atc.Source
+		result2 error
+	}
+	imageSourceRedactionReturnsOnCall map[int]struct {
+		result1 atc.Source
+		result2 error
+	}
 	ImageVersionDeterminedStub        func(db.UsedResourceCache) error
 	imageVersionDeterminedMutex       sync.RWMutex
 	imageVersionDeterminedArgsForCall []struct {
@@ -41,10 +54,11 @@ type FakeCheckDelegate struct {
 	initializingArgsForCall []struct {
 		arg1 lager.Logger
 	}
-	SaveVersionsStub        func([]atc.Version) error
+	SaveVersionsStub        func(db.SpanContext, []atc.Version) error
 	saveVersionsMutex       sync.RWMutex
 	saveVersionsArgsForCall []struct {
-		arg1 []atc.Version
+		arg1 db.SpanContext
+		arg2 []atc.Version
 	}
 	saveVersionsReturns struct {
 		result1 error
@@ -155,6 +169,69 @@ func (fake *FakeCheckDelegate) FinishedArgsForCall(i int) (lager.Logger, bool) {
 	return argsForCall.arg1, argsForCall.arg2
 }
 
+func (fake *FakeCheckDelegate) RedactImageSource(arg1 atc.Source) (atc.Source, error) {
+	fake.imageSourceRedactionMutex.Lock()
+	ret, specificReturn := fake.imageSourceRedactionReturnsOnCall[len(fake.imageSourceRedactionArgsForCall)]
+	fake.imageSourceRedactionArgsForCall = append(fake.imageSourceRedactionArgsForCall, struct {
+		arg1 atc.Source
+	}{arg1})
+	fake.recordInvocation("RedactImageSource", []interface{}{arg1})
+	fake.imageSourceRedactionMutex.Unlock()
+	if fake.ImageSourceRedactionStub != nil {
+		return fake.ImageSourceRedactionStub(arg1)
+	}
+	if specificReturn {
+		return ret.result1, ret.result2
+	}
+	fakeReturns := fake.imageSourceRedactionReturns
+	return fakeReturns.result1, fakeReturns.result2
+}
+
+func (fake *FakeCheckDelegate) ImageSourceRedactionCallCount() int {
+	fake.imageSourceRedactionMutex.RLock()
+	defer fake.imageSourceRedactionMutex.RUnlock()
+	return len(fake.imageSourceRedactionArgsForCall)
+}
+
+func (fake *FakeCheckDelegate) ImageSourceRedactionCalls(stub func(atc.Source) (atc.Source, error)) {
+	fake.imageSourceRedactionMutex.Lock()
+	defer fake.imageSourceRedactionMutex.Unlock()
+	fake.ImageSourceRedactionStub = stub
+}
+
+func (fake *FakeCheckDelegate) ImageSourceRedactionArgsForCall(i int) atc.Source {
+	fake.imageSourceRedactionMutex.RLock()
+	defer fake.imageSourceRedactionMutex.RUnlock()
+	argsForCall := fake.imageSourceRedactionArgsForCall[i]
+	return argsForCall.arg1
+}
+
+func (fake *FakeCheckDelegate) ImageSourceRedactionReturns(result1 atc.Source, result2 error) {
+	fake.imageSourceRedactionMutex.Lock()
+	defer fake.imageSourceRedactionMutex.Unlock()
+	fake.ImageSourceRedactionStub = nil
+	fake.imageSourceRedactionReturns = struct {
+		result1 atc.Source
+		result2 error
+	}{result1, result2}
+}
+
+func (fake *FakeCheckDelegate) ImageSourceRedactionReturnsOnCall(i int, result1 atc.Source, result2 error) {
+	fake.imageSourceRedactionMutex.Lock()
+	defer fake.imageSourceRedactionMutex.Unlock()
+	fake.ImageSourceRedactionStub = nil
+	if fake.imageSourceRedactionReturnsOnCall == nil {
+		fake.imageSourceRedactionReturnsOnCall = make(map[int]struct {
+			result1 atc.Source
+			result2 error
+		})
+	}
+	fake.imageSourceRedactionReturnsOnCall[i] = struct {
+		result1 atc.Source
+		result2 error
+	}{result1, result2}
+}
+
 func (fake *FakeCheckDelegate) ImageVersionDetermined(arg1 db.UsedResourceCache) error {
 	fake.imageVersionDeterminedMutex.Lock()
 	ret, specificReturn := fake.imageVersionDeterminedReturnsOnCall[len(fake.imageVersionDeterminedArgsForCall)]
@@ -246,21 +323,22 @@ func (fake *FakeCheckDelegate) InitializingArgsForCall(i int) lager.Logger {
 	return argsForCall.arg1
 }
 
-func (fake *FakeCheckDelegate) SaveVersions(arg1 []atc.Version) error {
-	var arg1Copy []atc.Version
-	if arg1 != nil {
-		arg1Copy = make([]atc.Version, len(arg1))
-		copy(arg1Copy, arg1)
+func (fake *FakeCheckDelegate) SaveVersions(arg1 db.SpanContext, arg2 []atc.Version) error {
+	var arg2Copy []atc.Version
+	if arg2 != nil {
+		arg2Copy = make([]atc.Version, len(arg2))
+		copy(arg2Copy, arg2)
 	}
 	fake.saveVersionsMutex.Lock()
 	ret, specificReturn := fake.saveVersionsReturnsOnCall[len(fake.saveVersionsArgsForCall)]
 	fake.saveVersionsArgsForCall = append(fake.saveVersionsArgsForCall, struct {
-		arg1 []atc.Version
-	}{arg1Copy})
-	fake.recordInvocation("SaveVersions", []interface{}{arg1Copy})
+		arg1 db.SpanContext
+		arg2 []atc.Version
+	}{arg1, arg2Copy})
+	fake.recordInvocation("SaveVersions", []interface{}{arg1, arg2Copy})
 	fake.saveVersionsMutex.Unlock()
 	if fake.SaveVersionsStub != nil {
-		return fake.SaveVersionsStub(arg1)
+		return fake.SaveVersionsStub(arg1, arg2)
 	}
 	if specificReturn {
 		return ret.result1
@@ -275,17 +353,17 @@ func (fake *FakeCheckDelegate) SaveVersionsCallCount() int {
 	return len(fake.saveVersionsArgsForCall)
 }
 
-func (fake *FakeCheckDelegate) SaveVersionsCalls(stub func([]atc.Version) error) {
+func (fake *FakeCheckDelegate) SaveVersionsCalls(stub func(db.SpanContext, []atc.Version) error) {
 	fake.saveVersionsMutex.Lock()
 	defer fake.saveVersionsMutex.Unlock()
 	fake.SaveVersionsStub = stub
 }
 
-func (fake *FakeCheckDelegate) SaveVersionsArgsForCall(i int) []atc.Version {
+func (fake *FakeCheckDelegate) SaveVersionsArgsForCall(i int) (db.SpanContext, []atc.Version) {
 	fake.saveVersionsMutex.RLock()
 	defer fake.saveVersionsMutex.RUnlock()
 	argsForCall := fake.saveVersionsArgsForCall[i]
-	return argsForCall.arg1
+	return argsForCall.arg1, argsForCall.arg2
 }
 
 func (fake *FakeCheckDelegate) SaveVersionsReturns(result1 error) {
@@ -505,6 +583,8 @@ func (fake *FakeCheckDelegate) Invocations() map[string][][]interface{} {
 	defer fake.erroredMutex.RUnlock()
 	fake.finishedMutex.RLock()
 	defer fake.finishedMutex.RUnlock()
+	fake.imageSourceRedactionMutex.RLock()
+	defer fake.imageSourceRedactionMutex.RUnlock()
 	fake.imageVersionDeterminedMutex.RLock()
 	defer fake.imageVersionDeterminedMutex.RUnlock()
 	fake.initializingMutex.RLock()

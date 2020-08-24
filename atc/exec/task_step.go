@@ -54,6 +54,7 @@ func (err TaskImageSourceParametersError) Error() string {
 
 type TaskDelegate interface {
 	ImageVersionDetermined(db.UsedResourceCache) error
+	RedactImageSource(source atc.Source) (atc.Source, error)
 
 	Stdout() io.Writer
 	Stderr() io.Writer
@@ -157,8 +158,16 @@ func (step *TaskStep) run(ctx context.Context, state RunState) error {
 		// external task - construct a source which reads it from file
 		taskConfigSource = FileConfigSource{ConfigPath: step.plan.ConfigPath, Client: step.workerClient}
 
-		// for interpolation - use 'vars' from the pipeline, and then fill remaining with cred variables
-		taskVars = []vars.Variables{vars.StaticVariables(step.plan.Vars), variables}
+		// for interpolation - use 'vars' from the pipeline, and then fill remaining with cred variables.
+		// this 2-phase strategy allows to interpolate 'vars' by cred variables.
+		if len(step.plan.Vars) > 0 {
+			taskConfigSource = InterpolateTemplateConfigSource{
+				ConfigSource:  taskConfigSource,
+				Vars:          []vars.Variables{vars.StaticVariables(step.plan.Vars)},
+				ExpectAllKeys: false,
+			}
+		}
+		taskVars = []vars.Variables{variables}
 	} else {
 		// embedded task - first we take it
 		taskConfigSource = StaticConfigSource{Config: step.plan.Config}
@@ -171,7 +180,11 @@ func (step *TaskStep) run(ctx context.Context, state RunState) error {
 	taskConfigSource = &OverrideParamsConfigSource{ConfigSource: taskConfigSource, Params: step.plan.Params}
 
 	// interpolate template vars
-	taskConfigSource = InterpolateTemplateConfigSource{ConfigSource: taskConfigSource, Vars: taskVars}
+	taskConfigSource = InterpolateTemplateConfigSource{
+		ConfigSource:  taskConfigSource,
+		Vars:          taskVars,
+		ExpectAllKeys: true,
+	}
 
 	// validate
 	taskConfigSource = ValidatingConfigSource{ConfigSource: taskConfigSource}
@@ -190,6 +203,9 @@ func (step *TaskStep) run(ctx context.Context, state RunState) error {
 		return err
 	}
 
+	if config.Limits == nil {
+		config.Limits = &atc.ContainerLimits{}
+	}
 	if config.Limits.CPU == nil {
 		config.Limits.CPU = step.defaultLimits.CPU
 	}
@@ -208,6 +224,7 @@ func (step *TaskStep) run(ctx context.Context, state RunState) error {
 	if err != nil {
 		return err
 	}
+	tracing.Inject(ctx, &containerSpec)
 
 	processSpec := runtime.ProcessSpec{
 		Path:         config.Run.Path,
@@ -351,12 +368,18 @@ func (step *TaskStep) containerSpec(logger lager.Logger, repository *build.Repos
 		return worker.ContainerSpec{}, err
 	}
 
+	var limits worker.ContainerLimits
+	if config.Limits != nil {
+		limits.CPU = config.Limits.CPU
+		limits.Memory = config.Limits.Memory
+	}
+
 	containerSpec := worker.ContainerSpec{
 		Platform:  config.Platform,
 		Tags:      step.plan.Tags,
 		TeamID:    step.metadata.TeamID,
 		ImageSpec: imageSpec,
-		Limits:    worker.ContainerLimits(config.Limits),
+		Limits:    limits,
 		User:      config.Run.User,
 		Dir:       metadata.WorkingDirectory,
 		Env:       config.Params.Env(),

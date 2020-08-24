@@ -20,6 +20,7 @@ import (
 
 type PutDelegate interface {
 	ImageVersionDetermined(db.UsedResourceCache) error
+	RedactImageSource(source atc.Source) (atc.Source, error)
 
 	Stdout() io.Writer
 	Stderr() io.Writer
@@ -59,7 +60,7 @@ func NewPutStep(
 	strategy worker.ContainerPlacementStrategy,
 	workerClient worker.Client,
 	delegate PutDelegate,
-) *PutStep {
+) Step {
 	return &PutStep{
 		planID:                planID,
 		plan:                  plan,
@@ -156,6 +157,7 @@ func (step *PutStep) run(ctx context.Context, state RunState) error {
 
 		ArtifactByPath: containerInputs,
 	}
+	tracing.Inject(ctx, &containerSpec)
 
 	workerSpec := worker.WorkerSpec{
 		ResourceType:  step.plan.Type,

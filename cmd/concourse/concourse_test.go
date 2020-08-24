@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"time"
 
 	"github.com/concourse/concourse/atc/postgresrunner"
 	"github.com/onsi/gomega/gbytes"
@@ -25,28 +26,48 @@ import (
 var _ = Describe("Web Command", func() {
 
 	var (
-		args           []string
 		hostKeyFile    string
 		hostPubKeyFile string
 
+		concourseCommand *exec.Cmd
 		concourseProcess ifrit.Process
 		concourseRunner  *ginkgomon.Runner
+		postgresRunner   postgresrunner.Runner
+		dbProcess        ifrit.Process
 	)
 
 	BeforeEach(func() {
-		args = []string{"web"}
+		hostKeyFile, hostPubKeyFile, _, _ = generateSSHKeypair()
+		postgresRunner = postgresrunner.Runner{
+			Port: 5433 + GinkgoParallelNode(),
+		}
+		dbProcess = ifrit.Invoke(postgresRunner)
+		postgresRunner.CreateTestDB()
+
+		concourseCommand = exec.Command(
+			concoursePath,
+			"web",
+			"--tsa-host-key", hostKeyFile,
+			"--postgres-user", "postgres",
+			"--postgres-database", "testdb",
+			"--postgres-port", strconv.Itoa(5433+GinkgoParallelNode()),
+			"--main-team-local-user", "test",
+			"--add-local-user", "test:test",
+			"--debug-bind-port", strconv.Itoa(8000+GinkgoParallelNode()),
+			"--bind-port", strconv.Itoa(8080+GinkgoParallelNode()),
+			"--tsa-bind-port", strconv.Itoa(2222+GinkgoParallelNode()),
+			"--client-id", "client-id",
+			"--client-secret", "client-secret",
+			"--tsa-client-id", "tsa-client-id",
+			"--tsa-client-secret", "tsa-client-secret",
+			"--tsa-token-url", "http://localhost/token",
+		)
 	})
 
 	JustBeforeEach(func() {
-		concourseCommand := exec.Command(
-			concoursePath,
-			args...,
-		)
-
 		concourseRunner = ginkgomon.New(ginkgomon.Config{
 			Command:       concourseCommand,
 			Name:          "web",
-			StartCheck:    "atc.cmd.start",
 			AnsiColorCode: "32m",
 		})
 
@@ -56,57 +77,53 @@ var _ = Describe("Web Command", func() {
 		http.DefaultServeMux = new(http.ServeMux)
 	})
 
-	JustAfterEach(func() {
+	AfterEach(func() {
 		ginkgomon.Interrupt(concourseProcess)
 		<-concourseProcess.Wait()
+		postgresRunner.DropTestDB()
+
+		dbProcess.Signal(os.Interrupt)
+		err := <-dbProcess.Wait()
+		Expect(err).NotTo(HaveOccurred())
+		os.Remove(hostKeyFile)
+		os.Remove(hostPubKeyFile)
+		os.Remove(filepath.Dir(hostPubKeyFile))
 	})
 
-	Context("when --tsa-host-key is specified", func() {
+	It("starts atc", func() {
+		Eventually(concourseRunner.Buffer(), "30s", "2s").Should(gbytes.Say("atc.listening"))
+	})
+
+	It("starts tsa", func() {
+		Eventually(concourseRunner.Buffer(), "30s", "2s").Should(gbytes.Say("tsa.listening"))
+	})
+
+	Context("when CONCOURSE_CONCURRENT_REQUEST_LIMIT is invalid", func() {
 		BeforeEach(func() {
-			hostKeyFile, hostPubKeyFile, _, _ = generateSSHKeypair()
-			args = append(args, "--tsa-host-key", hostKeyFile)
+			concourseCommand.Env = append(concourseCommand.Env, "CONCOURSE_CONCURRENT_REQUEST_LIMIT=InvalidAction:0")
 		})
 
-		AfterEach(func() {
-			os.Remove(hostKeyFile)
-			os.Remove(hostPubKeyFile)
-			os.Remove(filepath.Dir(hostPubKeyFile))
+		It("prints an error and exits", func() {
+			Eventually(concourseRunner.Err()).Should(gbytes.Say("'InvalidAction' is not a valid action"))
+		})
+	})
+
+	Context("with CONCOURSE_TSA_CLIENT_ID specified", func() {
+		BeforeEach(func() {
+			concourseCommand.Env = append(concourseCommand.Env, "CONCOURSE_TSA_CLIENT_ID=tsa-client-id")
 		})
 
-		Context("and all other required flags are provided", func() {
-			var (
-				postgresRunner postgresrunner.Runner
-				dbProcess      ifrit.Process
-			)
+		It("starts atc", func() {
+			Eventually(concourseRunner.Buffer(), "30s", "2s").Should(gbytes.Say("atc.listening"))
+		})
 
+		It("starts tsa", func() {
+			Eventually(concourseRunner.Buffer(), "30s", "2s").Should(gbytes.Say("tsa.listening"))
+		})
+
+		Context("with CONCOURSE_SYSTEM_CLAIM_KEY is not set to 'aud'", func() {
 			BeforeEach(func() {
-				postgresRunner = postgresrunner.Runner{
-					Port: 5433 + GinkgoParallelNode(),
-				}
-				dbProcess = ifrit.Invoke(postgresRunner)
-				postgresRunner.CreateTestDB()
-
-				args = append(args,
-					"--postgres-user", "postgres",
-					"--postgres-database", "testdb",
-					"--postgres-port", strconv.Itoa(5433+GinkgoParallelNode()),
-					"--main-team-local-user", "test",
-					"--add-local-user", "test:test",
-					"--debug-bind-port", strconv.Itoa(8000+GinkgoParallelNode()),
-					"--bind-port", strconv.Itoa(8080+GinkgoParallelNode()),
-					"--tsa-bind-port", strconv.Itoa(2222+GinkgoParallelNode()),
-					"--client-id", "client-id",
-					"--client-secret", "client-secret",
-					"--tsa-token-url", "http://localhost/token",
-				)
-			})
-
-			AfterEach(func() {
-				postgresRunner.DropTestDB()
-
-				dbProcess.Signal(os.Interrupt)
-				err := <-dbProcess.Wait()
-				Expect(err).NotTo(HaveOccurred())
+				concourseCommand.Env = append(concourseCommand.Env, "CONCOURSE_SYSTEM_CLAIM_KEY=not-aud")
 			})
 
 			It("starts atc", func() {
@@ -116,10 +133,28 @@ var _ = Describe("Web Command", func() {
 			It("starts tsa", func() {
 				Eventually(concourseRunner.Buffer(), "30s", "2s").Should(gbytes.Say("tsa.listening"))
 			})
+		})
 
-			Context("with tsa-client-id specified", func() {
+		Context("with CONCOURSE_SYSTEM_CLAIM_KEY set to 'aud'", func() {
+			BeforeEach(func() {
+				concourseCommand.Env = append(concourseCommand.Env, "CONCOURSE_SYSTEM_CLAIM_KEY=aud")
+			})
+
+			Context("when the system claim values does not contain the client id", func() {
 				BeforeEach(func() {
-					args = append(args, "--tsa-client-id", "tsa-client-id")
+					concourseCommand.Env = append(concourseCommand.Env, "CONCOURSE_SYSTEM_CLAIM_VALUE=system-claim-value-1,system-claim-value-2")
+				})
+
+				It("errors", func() {
+					Eventually(concourseRunner.Err(), 5*time.Second).Should(
+						gbytes.Say("at least one systemClaimValue must be equal to tsa-client-id"),
+					)
+				})
+			})
+
+			Context("when the system claim values contain the client id", func() {
+				BeforeEach(func() {
+					concourseCommand.Env = append(concourseCommand.Env, "CONCOURSE_SYSTEM_CLAIM_VALUE=system-claim-value-1,tsa-client-id")
 				})
 
 				It("starts atc", func() {
@@ -128,58 +163,6 @@ var _ = Describe("Web Command", func() {
 
 				It("starts tsa", func() {
 					Eventually(concourseRunner.Buffer(), "30s", "2s").Should(gbytes.Say("tsa.listening"))
-				})
-
-				Context("with system-claim-key is not set to 'aud'", func() {
-					BeforeEach(func() {
-						args = append(args, "--system-claim-key", "not-aud")
-					})
-
-					It("starts atc", func() {
-						Eventually(concourseRunner.Buffer(), "30s", "2s").Should(gbytes.Say("atc.listening"))
-					})
-
-					It("starts tsa", func() {
-						Eventually(concourseRunner.Buffer(), "30s", "2s").Should(gbytes.Say("tsa.listening"))
-					})
-				})
-
-				Context("with system-claim-key set to 'aud'", func() {
-					BeforeEach(func() {
-						args = append(args, "--system-claim-key", "aud")
-					})
-
-					Context("when the system claim values does not contain the client id", func() {
-						BeforeEach(func() {
-							args = append(args,
-								"--system-claim-value", "system-claim-value-1",
-								"--system-claim-value", "system-claim-value-2",
-							)
-						})
-
-						It("errors", func() {
-							Eventually(concourseRunner.Err()).Should(
-								gbytes.Say("at least one systemClaimValue must be equal to tsa-client-id"),
-							)
-						})
-					})
-
-					Context("when the system claim values contain the client id", func() {
-						BeforeEach(func() {
-							args = append(args,
-								"--system-claim-value", "tsa-client-id",
-								"--system-claim-value", "system-claim-value-1",
-							)
-						})
-
-						It("starts atc", func() {
-							Eventually(concourseRunner.Buffer(), "30s", "2s").Should(gbytes.Say("atc.listening"))
-						})
-
-						It("starts tsa", func() {
-							Eventually(concourseRunner.Buffer(), "30s", "2s").Should(gbytes.Say("tsa.listening"))
-						})
-					})
 				})
 			})
 		})

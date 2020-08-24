@@ -23,6 +23,7 @@ module DashboardTests exposing
     , running
     , userWithRoles
     , whenOnDashboard
+    , whenOnDashboardViewingAllPipelines
     , white
     )
 
@@ -49,6 +50,7 @@ import Message.Effects as Effects
 import Message.Message as Msgs
 import Message.Subscription as Subscription exposing (Delivery(..), Interval(..))
 import Message.TopLevelMessage as ApplicationMsgs
+import Routes
 import Test exposing (..)
 import Test.Html.Event as Event
 import Test.Html.Query as Query
@@ -145,19 +147,6 @@ flags =
     , authToken = ""
     , pipelineRunningKeyframes = pipelineRunningKeyframes
     }
-
-
-internalServerError : Http.Error
-internalServerError =
-    Http.BadStatus
-        { url = "http://example.com"
-        , status =
-            { code = 500
-            , message = "internal server error"
-            }
-        , headers = Dict.empty
-        , body = ""
-        }
 
 
 all : Test
@@ -258,24 +247,85 @@ all =
                 Common.init "/"
                     |> Application.handleCallback
                         (Callback.AllTeamsFetched <|
+                            Data.httpUnauthorized
+                        )
+                    |> Tuple.second
+                    |> Expect.equal [ Effects.RedirectToLogin ]
+        , test "retries the request after 1 second if ListAllJobs call gives a 503" <|
+            \_ ->
+                Common.init "/"
+                    |> Application.handleCallback
+                        (Callback.AllJobsFetched <|
                             Err <|
                                 Http.BadStatus
                                     { url = "http://example.com"
                                     , status =
-                                        { code = 401
-                                        , message = "unauthorized"
+                                        { code = 503
+                                        , message = "service unavailable"
                                         }
                                     , headers = Dict.empty
                                     , body = ""
                                     }
                         )
+                    |> Tuple.first
+                    |> Application.handleDelivery
+                        (ClockTicked OneSecond <|
+                            Time.millisToPosix 1000
+                        )
                     |> Tuple.second
-                    |> Expect.equal [ Effects.RedirectToLogin ]
+                    |> Expect.equal [ Effects.FetchAllJobs ]
+        , test "only retries the request once per 503 response" <|
+            \_ ->
+                Common.init "/"
+                    |> Application.handleCallback
+                        (Callback.AllJobsFetched <|
+                            Err <|
+                                Http.BadStatus
+                                    { url = "http://example.com"
+                                    , status =
+                                        { code = 503
+                                        , message = "service unavailable"
+                                        }
+                                    , headers = Dict.empty
+                                    , body = ""
+                                    }
+                        )
+                    |> Tuple.first
+                    |> Application.handleDelivery
+                        (ClockTicked OneSecond <|
+                            Time.millisToPosix 1000
+                        )
+                    |> Tuple.first
+                    |> Application.handleDelivery
+                        (ClockTicked OneSecond <|
+                            Time.millisToPosix 1000
+                        )
+                    |> Tuple.second
+                    |> Expect.equal []
+        , test "does not show turbulence screen on 503" <|
+            \_ ->
+                Common.init "/"
+                    |> Application.handleCallback
+                        (Callback.AllJobsFetched <|
+                            Err <|
+                                Http.BadStatus
+                                    { url = "http://example.com"
+                                    , status =
+                                        { code = 503
+                                        , message = "service unavailable"
+                                        }
+                                    , headers = Dict.empty
+                                    , body = ""
+                                    }
+                        )
+                    |> Tuple.first
+                    |> Common.queryView
+                    |> Query.hasNot [ text "experiencing turbulence" ]
         , test "shows turbulence view if the all teams call gives a bad status error" <|
             \_ ->
                 Common.init "/"
                     |> Application.handleCallback
-                        (Callback.AllTeamsFetched <| Err internalServerError)
+                        (Callback.AllTeamsFetched <| Data.httpInternalServerError)
                     |> Tuple.first
                     |> Common.queryView
                     |> Query.has [ text "experiencing turbulence" ]
@@ -283,7 +333,7 @@ all =
             \_ ->
                 Common.init "/"
                     |> Application.handleCallback
-                        (Callback.AllTeamsFetched <| Err internalServerError)
+                        (Callback.AllTeamsFetched <| Data.httpInternalServerError)
                     |> Tuple.first
                     |> Application.handleCallback
                         (Callback.AllTeamsFetched <| Ok [])
@@ -294,7 +344,7 @@ all =
             \_ ->
                 Common.init "/"
                     |> Application.handleCallback
-                        (Callback.AllResourcesFetched <| Err internalServerError)
+                        (Callback.AllResourcesFetched <| Data.httpInternalServerError)
                     |> Tuple.first
                     |> Common.queryView
                     |> Query.has [ text "experiencing turbulence" ]
@@ -302,7 +352,7 @@ all =
             \_ ->
                 Common.init "/"
                     |> Application.handleCallback
-                        (Callback.AllResourcesFetched <| Err internalServerError)
+                        (Callback.AllResourcesFetched <| Data.httpInternalServerError)
                     |> Tuple.first
                     |> Application.handleCallback
                         (Callback.AllResourcesFetched <| Ok [])
@@ -313,7 +363,7 @@ all =
             \_ ->
                 Common.init "/"
                     |> Application.handleCallback
-                        (Callback.AllJobsFetched <| Err internalServerError)
+                        (Callback.AllJobsFetched <| Data.httpInternalServerError)
                     |> Tuple.first
                     |> Common.queryView
                     |> Query.has [ text "experiencing turbulence" ]
@@ -321,7 +371,7 @@ all =
             \_ ->
                 Common.init "/"
                     |> Application.handleCallback
-                        (Callback.AllJobsFetched <| Err internalServerError)
+                        (Callback.AllJobsFetched <| Data.httpInternalServerError)
                     |> Tuple.first
                     |> Application.handleCallback
                         (Callback.AllJobsFetched <| Ok [])
@@ -332,7 +382,7 @@ all =
             \_ ->
                 Common.init "/"
                     |> Application.handleCallback
-                        (Callback.AllPipelinesFetched <| Err internalServerError)
+                        (Callback.AllPipelinesFetched <| Data.httpInternalServerError)
                     |> Tuple.first
                     |> Common.queryView
                     |> Query.has [ text "experiencing turbulence" ]
@@ -340,7 +390,7 @@ all =
             \_ ->
                 Common.init "/"
                     |> Application.handleCallback
-                        (Callback.AllPipelinesFetched <| Err internalServerError)
+                        (Callback.AllPipelinesFetched <| Data.httpInternalServerError)
                     |> Tuple.first
                     |> Application.handleCallback
                         (Callback.AllPipelinesFetched <| Ok [])
@@ -351,10 +401,10 @@ all =
             \_ ->
                 Common.init "/"
                     |> Application.handleCallback
-                        (Callback.AllJobsFetched <| Err internalServerError)
+                        (Callback.AllJobsFetched <| Data.httpInternalServerError)
                     |> Tuple.first
                     |> Application.handleCallback
-                        (Callback.AllPipelinesFetched <| Err internalServerError)
+                        (Callback.AllPipelinesFetched <| Data.httpInternalServerError)
                     |> Tuple.first
                     |> Application.handleCallback
                         (Callback.AllPipelinesFetched <| Ok [])
@@ -589,12 +639,6 @@ all =
                     |> Common.queryView
                     |> Query.find [ id "page-below-top-bar" ]
                     |> Query.hasNot [ style "padding-bottom" "50px" ]
-        , test "top bar has bold font" <|
-            \_ ->
-                whenOnDashboard { highDensity = False }
-                    |> Common.queryView
-                    |> Query.find [ id "top-bar-app" ]
-                    |> Query.has [ style "font-weight" "700" ]
         , test "logging out causes pipeline list to reload" <|
             let
                 showsLoadingState : Application.Model -> Expectation
@@ -1450,6 +1494,10 @@ all =
                             hdToggle
                                 |> Query.has
                                     [ style "text-transform" "uppercase" ]
+                    , test "displays label on the right" <|
+                        \_ ->
+                            hdToggle
+                                |> Query.has [ style "flex-direction" "row" ]
                     , test "links to HD view" <|
                         \_ ->
                             hdToggle
@@ -1462,7 +1510,7 @@ all =
                                 |> Query.has
                                     [ style "background-image" <|
                                         Assets.backgroundImage <|
-                                            Just (Assets.HighDensityIcon False)
+                                            Just (Assets.ToggleSwitch False)
                                     , style "background-size" "contain"
                                     , style "height" "20px"
                                     , style "width" "35px"
@@ -1494,7 +1542,7 @@ all =
                                 |> Query.has
                                     [ style "background-image" <|
                                         Assets.backgroundImage <|
-                                            Just (Assets.HighDensityIcon True)
+                                            Just (Assets.ToggleSwitch True)
                                     , style "background-size" "contain"
                                     , style "height" "20px"
                                     , style "width" "35px"
@@ -1792,7 +1840,7 @@ all =
                         |> Tuple.first
                         |> afterSeconds 6
                         |> Application.update
-                            (ApplicationMsgs.DeliveryReceived Moused)
+                            (ApplicationMsgs.DeliveryReceived <| Moused { x = 0, y = 0 })
                         |> Tuple.first
                         |> Common.queryView
                         |> Query.has [ id "dashboard-info" ]
@@ -1849,6 +1897,18 @@ all =
                         )
                     |> Tuple.second
                     |> Common.contains Effects.FetchAllJobs
+        , test "stops polling jobs if the endpoint is disabled" <|
+            \_ ->
+                Common.init "/"
+                    |> Application.handleCallback
+                        (Callback.AllJobsFetched <| Data.httpNotImplemented)
+                    |> Tuple.first
+                    |> Application.handleDelivery
+                        (ClockTicked FiveSeconds <|
+                            Time.millisToPosix 0
+                        )
+                    |> Tuple.second
+                    |> Common.notContains Effects.FetchAllJobs
         , test "auto refreshes jobs on next five-second tick after dropping" <|
             \_ ->
                 Common.init "/"
@@ -1856,7 +1916,7 @@ all =
                         (Callback.AllJobsFetched <| Ok [])
                     |> Tuple.first
                     |> Application.update
-                        (ApplicationMsgs.Update <| Msgs.DragStart "team" 0)
+                        (ApplicationMsgs.Update <| Msgs.DragStart "team" "pipeline")
                     |> Tuple.first
                     |> Application.handleDelivery
                         (ClockTicked FiveSeconds <|
@@ -1975,6 +2035,24 @@ whenOnDashboard { highDensity } =
             "/"
 
 
+whenOnDashboardViewingAllPipelines : { highDensity : Bool } -> Application.Model
+whenOnDashboardViewingAllPipelines { highDensity } =
+    whenOnDashboard { highDensity = highDensity }
+        |> Application.handleDelivery
+            (RouteChanged <|
+                Routes.Dashboard
+                    { searchType =
+                        if highDensity then
+                            Routes.HighDensity
+
+                        else
+                            Routes.Normal ""
+                    , dashboardView = Routes.ViewAllPipelines
+                    }
+            )
+        |> Tuple.first
+
+
 givenDataAndUser :
     List Concourse.Team
     -> Concourse.User
@@ -2008,18 +2086,7 @@ givenDataUnauthenticated data =
         (Callback.AllTeamsFetched <| Ok data)
         >> Tuple.first
         >> Application.handleCallback
-            (Callback.UserFetched <|
-                Err <|
-                    Http.BadStatus
-                        { url = "http://example.com"
-                        , status =
-                            { code = 401
-                            , message = ""
-                            }
-                        , headers = Dict.empty
-                        , body = ""
-                        }
-            )
+            (Callback.UserFetched <| Data.httpUnauthorized)
 
 
 givenClusterInfo :

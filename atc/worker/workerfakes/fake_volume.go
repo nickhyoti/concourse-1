@@ -47,6 +47,16 @@ type FakeVolume struct {
 	destroyReturnsOnCall map[int]struct {
 		result1 error
 	}
+	GetResourceCacheIDStub        func() int
+	getResourceCacheIDMutex       sync.RWMutex
+	getResourceCacheIDArgsForCall []struct {
+	}
+	getResourceCacheIDReturns struct {
+		result1 int
+	}
+	getResourceCacheIDReturnsOnCall map[int]struct {
+		result1 int
+	}
 	HandleStub        func() string
 	handleMutex       sync.RWMutex
 	handleArgsForCall []struct {
@@ -350,6 +360,58 @@ func (fake *FakeVolume) DestroyReturnsOnCall(i int, result1 error) {
 	}
 	fake.destroyReturnsOnCall[i] = struct {
 		result1 error
+	}{result1}
+}
+
+func (fake *FakeVolume) GetResourceCacheID() int {
+	fake.getResourceCacheIDMutex.Lock()
+	ret, specificReturn := fake.getResourceCacheIDReturnsOnCall[len(fake.getResourceCacheIDArgsForCall)]
+	fake.getResourceCacheIDArgsForCall = append(fake.getResourceCacheIDArgsForCall, struct {
+	}{})
+	fake.recordInvocation("GetResourceCacheID", []interface{}{})
+	fake.getResourceCacheIDMutex.Unlock()
+	if fake.GetResourceCacheIDStub != nil {
+		return fake.GetResourceCacheIDStub()
+	}
+	if specificReturn {
+		return ret.result1
+	}
+	fakeReturns := fake.getResourceCacheIDReturns
+	return fakeReturns.result1
+}
+
+func (fake *FakeVolume) GetResourceCacheIDCallCount() int {
+	fake.getResourceCacheIDMutex.RLock()
+	defer fake.getResourceCacheIDMutex.RUnlock()
+	return len(fake.getResourceCacheIDArgsForCall)
+}
+
+func (fake *FakeVolume) GetResourceCacheIDCalls(stub func() int) {
+	fake.getResourceCacheIDMutex.Lock()
+	defer fake.getResourceCacheIDMutex.Unlock()
+	fake.GetResourceCacheIDStub = stub
+}
+
+func (fake *FakeVolume) GetResourceCacheIDReturns(result1 int) {
+	fake.getResourceCacheIDMutex.Lock()
+	defer fake.getResourceCacheIDMutex.Unlock()
+	fake.GetResourceCacheIDStub = nil
+	fake.getResourceCacheIDReturns = struct {
+		result1 int
+	}{result1}
+}
+
+func (fake *FakeVolume) GetResourceCacheIDReturnsOnCall(i int, result1 int) {
+	fake.getResourceCacheIDMutex.Lock()
+	defer fake.getResourceCacheIDMutex.Unlock()
+	fake.GetResourceCacheIDStub = nil
+	if fake.getResourceCacheIDReturnsOnCall == nil {
+		fake.getResourceCacheIDReturnsOnCall = make(map[int]struct {
+			result1 int
+		})
+	}
+	fake.getResourceCacheIDReturnsOnCall[i] = struct {
+		result1 int
 	}{result1}
 }
 
@@ -1010,6 +1072,8 @@ func (fake *FakeVolume) Invocations() map[string][][]interface{} {
 	defer fake.createChildForContainerMutex.RUnlock()
 	fake.destroyMutex.RLock()
 	defer fake.destroyMutex.RUnlock()
+	fake.getResourceCacheIDMutex.RLock()
+	defer fake.getResourceCacheIDMutex.RUnlock()
 	fake.handleMutex.RLock()
 	defer fake.handleMutex.RUnlock()
 	fake.initializeArtifactMutex.RLock()

@@ -107,12 +107,14 @@ var _ = Describe("Fly CLI", func() {
 					},
 					{
 						Name: "pinned-resource-job",
-						Plan: atc.PlanSequence{
+						PlanSequence: []atc.Step{
 							{
-								Get: "some-resource",
-								Version: &atc.VersionConfig{
-									Pinned: atc.Version{
-										"ref": "some-ref",
+								Config: &atc.GetStep{
+									Name: "some-resource",
+									Version: &atc.VersionConfig{
+										Pinned: atc.Version{
+											"ref": "some-ref",
+										},
 									},
 								},
 							},
@@ -398,9 +400,11 @@ this is super secure
 						Jobs: atc.JobConfigs{
 							{
 								Name: "some-job",
-								Plan: atc.PlanSequence{
+								PlanSequence: []atc.Step{
 									{
-										Get: "some-resource",
+										Config: &atc.GetStep{
+											Name: "some-resource",
+										},
 									},
 								},
 							},
@@ -475,9 +479,11 @@ this is super secure
 						Jobs: atc.JobConfigs{
 							{
 								Name: "some-job",
-								Plan: atc.PlanSequence{
+								PlanSequence: []atc.Step{
 									{
-										Get: "some-resource",
+										Config: &atc.GetStep{
+											Name: "some-resource",
+										},
 									},
 								},
 							},
@@ -554,9 +560,11 @@ this is super secure
 						Jobs: atc.JobConfigs{
 							{
 								Name: "some-job",
-								Plan: atc.PlanSequence{
+								PlanSequence: []atc.Step{
 									{
-										Get: "some-resource",
+										Config: &atc.GetStep{
+											Name: "some-resource",
+										},
 									},
 								},
 							},
@@ -958,6 +966,75 @@ this is super secure
 					}).To(Change(func() int {
 						return len(atcServer.ReceivedRequests())
 					}).By(2))
+				})
+			})
+
+			Context("when setting new pipeline with non-default team", func() {
+				BeforeEach(func() {
+					atcServer.AppendHandlers(
+						ghttp.CombineHandlers(
+							ghttp.VerifyRequest("GET", "/api/v1/teams/other-team"),
+							ghttp.RespondWithJSONEncoded(http.StatusOK, atc.Team{
+								Name: "other-team",
+							}),
+						),
+						ghttp.CombineHandlers(
+							ghttp.VerifyRequest("GET", "/api/v1/teams/other-team/pipelines/awesome-pipeline/config"),
+							ghttp.RespondWithJSONEncoded(http.StatusOK, atc.Team{
+								Name: "other-team",
+							}),
+						),
+						ghttp.CombineHandlers(
+							ghttp.VerifyRequest("PUT", "/api/v1/teams/other-team/pipelines/awesome-pipeline/config"),
+							ghttp.RespondWithJSONEncoded(http.StatusOK, atc.Team{
+								Name: "other-team",
+							}),
+						),
+					)
+				})
+
+				It("successfully sets new pipeline to non-default team", func() {
+					Expect(func() {
+						flyCmd := exec.Command(flyPath, "-t", targetName, "set-pipeline", "-p", "awesome-pipeline", "-c", configFile.Name(), "--team", "other-team")
+
+						stdin, err := flyCmd.StdinPipe()
+						Expect(err).NotTo(HaveOccurred())
+
+						sess, err := gexec.Start(flyCmd, GinkgoWriter, GinkgoWriter)
+						Expect(err).NotTo(HaveOccurred())
+
+						Eventually(sess).Should(gbytes.Say(`apply configuration\? \[yN\]: `))
+						yes(stdin)
+
+						Eventually(sess).Should(gbytes.Say("configuration updated"))
+
+						<-sess.Exited
+						Expect(sess.ExitCode()).To(Equal(0))
+
+					}).To(Change(func() int {
+						return len(atcServer.ReceivedRequests())
+					}).By(4))
+				})
+
+				It("bails if the user rejects the configuration", func() {
+					Expect(func() {
+						flyCmd := exec.Command(flyPath, "-t", targetName, "set-pipeline", "-p", "awesome-pipeline", "-c", configFile.Name(), "--team", "other-team")
+
+						stdin, err := flyCmd.StdinPipe()
+						Expect(err).NotTo(HaveOccurred())
+
+						sess, err := gexec.Start(flyCmd, GinkgoWriter, GinkgoWriter)
+						Expect(err).NotTo(HaveOccurred())
+
+						Eventually(sess).Should(gbytes.Say(`apply configuration\? \[yN\]: `))
+						no(stdin)
+						Eventually(sess).Should(gbytes.Say("bailing out"))
+
+						<-sess.Exited
+						Expect(sess.ExitCode()).To(Equal(0))
+					}).To(Change(func() int {
+						return len(atcServer.ReceivedRequests())
+					}).By(3))
 				})
 			})
 

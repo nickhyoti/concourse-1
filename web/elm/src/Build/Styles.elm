@@ -8,7 +8,6 @@ module Build.Styles exposing
     , durationTooltipArrow
     , errorLog
     , firstOccurrenceTooltip
-    , firstOccurrenceTooltipArrow
     , header
     , historyItem
     , metadataCell
@@ -29,6 +28,7 @@ import Concourse.BuildStatus exposing (BuildStatus(..))
 import Dashboard.Styles exposing (striped)
 import Html
 import Html.Attributes exposing (style)
+import Views.Styles
 
 
 header : BuildStatus -> List (Html.Attribute msg)
@@ -165,9 +165,6 @@ buttonTooltip width =
     , style "width" <| String.fromInt width ++ "px"
     , style "color" Colors.text
     , style "background-color" Colors.frame
-    , style "font-size" "12px"
-    , style "font-family" "Inconsolata,monospace"
-    , style "font-weight" "700"
     , style "padding" "10px"
     , style "text-align" "right"
     , style "pointer-events" "none"
@@ -176,6 +173,7 @@ buttonTooltip width =
     -- ^ need a value greater than 0 (inherited from .fixed-header) since this
     -- element is earlier in the document than the build tabs
     ]
+        ++ Views.Styles.defaultFont
 
 
 stepHeader : StepState -> List (Html.Attribute msg)
@@ -230,34 +228,15 @@ stepStatusIcon =
     ]
 
 
-firstOccurrenceTooltip : Float -> Float -> List (Html.Attribute msg)
-firstOccurrenceTooltip bottom left =
-    [ style "position" "fixed"
-    , style "left" <| String.fromFloat left ++ "px"
-    , style "bottom" <| String.fromFloat bottom ++ "px"
-    , style "background-color" Colors.tooltipBackground
+firstOccurrenceTooltip : List (Html.Attribute msg)
+firstOccurrenceTooltip =
+    [ style "background-color" Colors.tooltipBackground
     , style "padding" "5px"
     , style "z-index" "100"
     , style "width" "6em"
     , style "pointer-events" "none"
     ]
         ++ Application.Styles.disableInteraction
-
-
-firstOccurrenceTooltipArrow : Float -> Float -> Float -> List (Html.Attribute msg)
-firstOccurrenceTooltipArrow bottom left width =
-    [ style "position" "fixed"
-    , style "left" <| String.fromFloat (left + width / 2) ++ "px"
-    , style "bottom" <| String.fromFloat bottom ++ "px"
-    , style "margin-bottom" "-5px"
-    , style "margin-left" "-5px"
-    , style "width" "0"
-    , style "height" "0"
-    , style "border-top" <| "5px solid " ++ Colors.tooltipBackground
-    , style "border-left" "5px solid transparent"
-    , style "border-right" "5px solid transparent"
-    , style "z-index" "100"
-    ]
 
 
 durationTooltip : List (Html.Attribute msg)
@@ -310,7 +289,7 @@ retryTab :
 retryTab { isHovered, isCurrent, isStarted } =
     [ style "display" "inline-block"
     , style "padding" "0 5px"
-    , style "font-weight" "700"
+    , style "font-weight" Views.Styles.fontWeightDefault
     , style "cursor" "pointer"
     , style "color" Colors.retryTabText
     , style "background-color" <|

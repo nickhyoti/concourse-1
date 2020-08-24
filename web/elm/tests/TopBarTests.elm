@@ -35,6 +35,7 @@ import Test.Html.Selector as Selector
         )
 import Time
 import Url
+import Views.Styles
 
 
 rspecStyleDescribe : String -> subject -> List (subject -> Test) -> Test
@@ -184,18 +185,7 @@ all =
                 ]
             , context "when logged out"
                 (Application.handleCallback
-                    (Callback.UserFetched <|
-                        Err <|
-                            Http.BadStatus
-                                { url = ""
-                                , status =
-                                    { code = 401
-                                    , message = "unauthorized"
-                                    }
-                                , headers = Dict.empty
-                                , body = ""
-                                }
-                    )
+                    (Callback.UserFetched <| Data.httpUnauthorized)
                     >> Tuple.first
                     >> queryView
                 )
@@ -342,11 +332,32 @@ all =
                 [ it "has blue background" <|
                     Query.has [ style "background-color" pausedBlue ]
                 , it "draws almost-white line to the left of login container" <|
-                    Query.children []
-                        >> Query.index -1
-                        >> Query.find [ id "login-container" ]
+                    Query.find [ id "login-container" ]
                         >> Query.has
                             [ style "border-left" <| "1px solid " ++ almostWhite ]
+                ]
+            , context "when pipeline is archived"
+                (Application.handleCallback
+                    (Callback.PipelineFetched <|
+                        Ok <|
+                            (Data.pipeline "t" 0
+                                |> Data.withName "p"
+                                |> Data.withPaused True
+                                |> Data.withArchived True
+                            )
+                    )
+                    >> Tuple.first
+                    >> Application.handleCallback
+                        (Callback.UserFetched <| Ok sampleUser)
+                    >> Tuple.first
+                    >> queryView
+                )
+                [ it "does not render pause toggle" <|
+                    Query.hasNot [ id "top-bar-pause-toggle" ]
+                , it "draws uses the normal border colour for the login container" <|
+                    Query.find [ id "login-container" ]
+                        >> Query.has
+                            [ style "border-left" <| "1px solid " ++ borderGrey ]
                 ]
             ]
         , rspecStyleDescribe "rendering user menus on clicks"
@@ -662,7 +673,7 @@ all =
                             [ style "border" searchBarBorder
                             , style "color" "#ffffff"
                             , style "font-size" "1.15em"
-                            , style "font-family" "Inconsolata, monospace"
+                            , style "font-family" Views.Styles.fontFamilyDefault
                             ]
                 , it "renders search with appropriate size and padding" <|
                     Query.find [ id SearchBar.searchInputId ]
@@ -677,8 +688,20 @@ all =
                 , it "has placeholder text" <|
                     Query.find [ id SearchBar.searchInputId ]
                         >> Query.has [ tag "input", attribute <| Attr.placeholder "search" ]
-                , it "has a search container" <|
-                    Query.has [ id "search-container" ]
+                , it "has a wrapper for top bar content" <|
+                    Query.has
+                        [ id "top-bar-content"
+                        , containing [ id "search-container" ]
+                        ]
+                , it "top bar content wrapper fills available space" <|
+                    Query.find [ id "top-bar-content" ]
+                        >> Query.has [ style "flex-grow" "1" ]
+                , it "top bar content wrapper centers its content" <|
+                    Query.find [ id "top-bar-content" ]
+                        >> Query.has
+                            [ style "display" "flex"
+                            , style "justify-content" "center"
+                            ]
                 , it "search container is positioned appropriately" <|
                     Query.find [ id "search-container" ]
                         >> Expect.all
@@ -1283,6 +1306,22 @@ all =
                         >> Query.count (Expect.equal 0)
                 ]
             ]
+        , rspecStyleDescribe "HD dashboard view"
+            (Common.init "/hd"
+                |> Application.handleCallback
+                    (Callback.AllPipelinesFetched <|
+                        Ok
+                            [ Data.pipeline "team1" 0 |> Data.withName "pipeline" ]
+                    )
+                |> Tuple.first
+            )
+            [ it "renders an empty top bar content that fills width" <|
+                queryView
+                    >> Query.has
+                        [ id "top-bar-content"
+                        , style "flex-grow" "1"
+                        ]
+            ]
         , describe "pause toggle" <|
             let
                 givenPipelinePaused =
@@ -1533,16 +1572,7 @@ all =
                     givenPipelinePaused
                         |> Application.handleCallback
                             (Callback.PipelineToggled pipelineIdentifier <|
-                                Err <|
-                                    Http.BadStatus
-                                        { url = "http://example.com"
-                                        , status =
-                                            { code = 401
-                                            , message = "unauthorized"
-                                            }
-                                        , headers = Dict.empty
-                                        , body = ""
-                                        }
+                                Data.httpUnauthorized
                             )
                         |> Tuple.second
                         |> Expect.equal
@@ -1552,16 +1582,7 @@ all =
                     givenPipelinePaused
                         |> Application.handleCallback
                             (Callback.PipelineToggled pipelineIdentifier <|
-                                Err <|
-                                    Http.BadStatus
-                                        { url = "http://example.com"
-                                        , status =
-                                            { code = 500
-                                            , message = ""
-                                            }
-                                        , headers = Dict.empty
-                                        , body = ""
-                                        }
+                                Data.httpInternalServerError
                             )
                         |> Tuple.first
                         |> queryView

@@ -40,6 +40,8 @@ type Pipeline interface {
 	Name() string
 	TeamID() int
 	TeamName() string
+	ParentJobID() int
+	ParentBuildID() int
 	Groups() atc.GroupConfigs
 	VarSources() atc.VarSourceConfigs
 	ConfigVersion() ConfigVersion
@@ -92,6 +94,8 @@ type Pipeline interface {
 	Rename(string) error
 
 	Variables(lager.Logger, creds.Secrets, creds.VarSourcePool) (vars.Variables, error)
+
+	SetParentIDs(jobID, buildID int) error
 }
 
 type pipeline struct {
@@ -99,6 +103,8 @@ type pipeline struct {
 	name          string
 	teamID        int
 	teamName      string
+	parentJobID   int
+	parentBuildID int
 	groups        atc.GroupConfigs
 	varSources    atc.VarSourceConfigs
 	configVersion ConfigVersion
@@ -126,7 +132,9 @@ var pipelinesQuery = psql.Select(`
 		p.paused,
 		p.public,
 		p.archived,
-		p.last_updated
+		p.last_updated,
+		p.parent_job_id,
+		p.parent_build_id
 	`).
 	From("pipelines p").
 	LeftJoin("teams t ON p.team_id = t.id")
@@ -142,6 +150,8 @@ func (p *pipeline) ID() int                  { return p.id }
 func (p *pipeline) Name() string             { return p.name }
 func (p *pipeline) TeamID() int              { return p.teamID }
 func (p *pipeline) TeamName() string         { return p.teamName }
+func (p *pipeline) ParentJobID() int         { return p.parentJobID }
+func (p *pipeline) ParentBuildID() int       { return p.parentBuildID }
 func (p *pipeline) Groups() atc.GroupConfigs { return p.groups }
 
 func (p *pipeline) VarSources() atc.VarSourceConfigs { return p.varSources }
@@ -600,10 +610,6 @@ func (p *pipeline) Pause() error {
 }
 
 func (p *pipeline) Unpause() error {
-	if p.Archived() {
-		return conflict("archived pipelines cannot be unpaused")
-	}
-
 	tx, err := p.conn.Begin()
 	if err != nil {
 		return err
@@ -733,6 +739,8 @@ func (p *pipeline) LoadDebugVersionsDB() (*atc.DebugVersionsDB, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	defer tx.Rollback()
 
 	rows, err := psql.Select("v.id, v.check_order, r.id, v.resource_config_scope_id, o.build_id, b.job_id").
 		From("build_resource_config_version_outputs o").
@@ -1138,6 +1146,43 @@ func (p *pipeline) Variables(logger lager.Logger, globalSecrets creds.Secrets, v
 	return allVars, nil
 }
 
+func (p *pipeline) SetParentIDs(jobID, buildID int) error {
+	if jobID <= 0 || buildID <= 0 {
+		return errors.New("job and build id cannot be negative or zero-value")
+	}
+
+	tx, err := p.conn.Begin()
+	if err != nil {
+		return err
+	}
+
+	defer Rollback(tx)
+
+	result, err := psql.Update("pipelines").
+		Set("parent_job_id", jobID).
+		Set("parent_build_id", buildID).
+		Where(sq.Eq{
+			"id": p.id,
+		}).
+		Where(sq.Or{sq.Lt{"parent_build_id": buildID}, sq.Eq{"parent_build_id": nil}}).
+		RunWith(tx).
+		Exec()
+
+	if err != nil {
+		return err
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return ErrSetByNewerBuild
+	}
+
+	return tx.Commit()
+}
+
 func getNewBuildNameForJob(tx Tx, jobName string, pipelineID int) (string, int, error) {
 	var buildName string
 	var jobID int
@@ -1220,48 +1265,23 @@ func requestScheduleForJobsInPipeline(tx Tx, pipelineID int) error {
 }
 
 func (p *pipeline) clearConfigForJobsInPipeline(tx Tx) error {
-	var emptyConfig atc.JobConfig
-
-	es := p.conn.EncryptionStrategy()
-
-	configPayload, err := json.Marshal(emptyConfig)
-	if err != nil {
-		return err
-	}
-	encryptedPayload, nonce, err := es.Encrypt(configPayload)
-	if err != nil {
-		return err
-	}
-
-	_, err = psql.Update("jobs").
-		Set("config", encryptedPayload).
-		Set("nonce", nonce).
+	_, err := psql.Update("jobs").
+		Set("config", nil).
+		Set("nonce", nil).
 		Where(sq.Eq{"pipeline_id": p.id}).
 		RunWith(tx).
 		Exec()
 	if err != nil {
 		return err
 	}
+
 	return nil
 }
 
 func (p *pipeline) clearConfigForResourcesInPipeline(tx Tx) error {
-	var emptyConfig atc.ResourceConfig
-
-	es := p.conn.EncryptionStrategy()
-
-	configPayload, err := json.Marshal(emptyConfig)
-	if err != nil {
-		return err
-	}
-	encryptedPayload, nonce, err := es.Encrypt(configPayload)
-	if err != nil {
-		return err
-	}
-
-	_, err = psql.Update("resources").
-		Set("config", encryptedPayload).
-		Set("nonce", nonce).
+	_, err := psql.Update("resources").
+		Set("config", nil).
+		Set("nonce", nil).
 		Where(sq.Eq{"pipeline_id": p.id}).
 		RunWith(tx).
 		Exec()
@@ -1273,23 +1293,9 @@ func (p *pipeline) clearConfigForResourcesInPipeline(tx Tx) error {
 }
 
 func (p *pipeline) clearConfigForResourceTypesInPipeline(tx Tx) error {
-	var emptyResourceType atc.ResourceType
-
-	es := p.conn.EncryptionStrategy()
-
-	configPayload, err := json.Marshal(emptyResourceType)
-	if err != nil {
-		return err
-	}
-
-	encryptedPayload, nonce, err := es.Encrypt(configPayload)
-	if err != nil {
-		return err
-	}
-
-	_, err = psql.Update("resource_types").
-		Set("config", encryptedPayload).
-		Set("nonce", nonce).
+	_, err := psql.Update("resource_types").
+		Set("config", nil).
+		Set("nonce", nil).
 		Where(sq.Eq{"pipeline_id": p.id}).
 		RunWith(tx).
 		Exec()

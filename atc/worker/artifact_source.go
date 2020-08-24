@@ -8,6 +8,7 @@ import (
 	"code.cloudfoundry.org/lager"
 	"github.com/concourse/concourse/atc/compression"
 	"github.com/concourse/concourse/atc/runtime"
+	"github.com/concourse/concourse/tracing"
 	"github.com/hashicorp/go-multierror"
 )
 
@@ -60,18 +61,26 @@ func (source *artifactSource) StreamTo(
 	logger lager.Logger,
 	destination ArtifactDestination,
 ) error {
+	ctx, span := tracing.StartSpan(ctx, "artifactSource.StreamTo", nil)
+	defer span.End()
+
+	_, outSpan := tracing.StartSpan(ctx, "volume.StreamOut", tracing.Attrs{
+		"origin-volume": source.volume.Handle(),
+		"origin-worker": source.volume.WorkerName(),
+	})
+	defer outSpan.End()
 	out, err := source.volume.StreamOut(ctx, ".", source.compression.Encoding())
+
 	if err != nil {
+		tracing.End(outSpan, err)
 		return err
 	}
 
 	defer out.Close()
 
 	err = destination.StreamIn(ctx, ".", source.compression.Encoding(), out)
-	if err != nil {
-		return err
-	}
-	return nil
+
+	return err
 }
 
 // TODO: figure out if we want logging before and after streams, I remove logger from private methods
@@ -105,8 +114,25 @@ func (source *artifactSource) StreamFile(
 	}, nil
 }
 
+// Returns volume if it belongs to the worker
+//  otherwise, if the volume has a Resource Cache
+//  it checks the worker for a local volume corresponding to the Resource Cache.
+//  Note: The returned volume may have a different handle than the ArtifactSource's inner volume handle.
 func (source *artifactSource) ExistsOn(logger lager.Logger, worker Worker) (Volume, bool, error) {
-	return worker.LookupVolume(logger, source.artifact.ID())
+	if source.volume.WorkerName() == worker.Name() {
+		return source.volume, true, nil
+	}
+
+	resourceCache, found, err := worker.FindResourceCacheForVolume(source.volume)
+	if err != nil {
+		return nil, false, err
+	}
+	if found {
+		return worker.FindVolumeForResourceCache(logger, resourceCache)
+	} else {
+		return nil, false, nil
+	}
+
 }
 
 type cacheArtifactSource struct {

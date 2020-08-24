@@ -1,5 +1,6 @@
 module Message.Message exposing
     ( DomID(..)
+    , DropTarget(..)
     , Message(..)
     , VersionId
     , VersionToggleAction(..)
@@ -22,8 +23,8 @@ type Message
     | ToggleGroup Concourse.PipelineGroup
     | SetGroups (List String)
       -- Dashboard
-    | DragStart String Int
-    | DragOver String Int
+    | DragStart String String
+    | DragOver DropTarget
     | DragEnd
     | Tooltip String String
     | TooltipHd String String
@@ -60,6 +61,7 @@ type DomID
     | PinMenuDropDown String
     | PinButton VersionId
     | PinBar
+    | PipelineStatusIcon Concourse.PipelineIdentifier
     | PipelineButton Concourse.PipelineIdentifier
     | VisibilityButton Concourse.PipelineIdentifier
     | FooterCliIcon Cli.Cli
@@ -81,6 +83,7 @@ type DomID
     | PipelineWrapper Concourse.PipelineIdentifier
     | JobPreview Concourse.JobIdentifier
     | HamburgerMenu
+    | SideBarResizeHandle
     | SideBarTeam String
     | SideBarPipeline Concourse.PipelineIdentifier
     | Dashboard
@@ -99,3 +102,8 @@ type VisibilityAction
 
 type alias VersionId =
     Concourse.VersionedResourceIdentifier
+
+
+type DropTarget
+    = Before String
+    | After String

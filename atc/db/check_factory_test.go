@@ -1,8 +1,7 @@
 package db_test
 
 import (
-	"code.cloudfoundry.org/lager"
-	"code.cloudfoundry.org/lager/lagertest"
+	"context"
 	"errors"
 	"time"
 
@@ -55,6 +54,7 @@ var _ = Describe("CheckFactory", func() {
 				false,
 				atc.Plan{Check: &atc.CheckPlan{Name: "some-name", Type: "some-type"}},
 				metadata,
+				map[string]string{"fake": "span"},
 			)
 			Expect(created).To(BeTrue())
 			Expect(err).NotTo(HaveOccurred())
@@ -85,7 +85,6 @@ var _ = Describe("CheckFactory", func() {
 			fakeResourceTypes []db.ResourceType
 			fromVersion       atc.Version
 			manuallyTriggered bool
-			logger            lager.Logger
 		)
 
 		BeforeEach(func() {
@@ -110,12 +109,10 @@ var _ = Describe("CheckFactory", func() {
 
 			fakeResourceTypes = []db.ResourceType{fakeResourceType}
 			manuallyTriggered = true
-
-			logger = lagertest.NewTestLogger("db-test")
 		})
 
 		JustBeforeEach(func() {
-			check, created, err = checkFactory.TryCreateCheck(logger, fakeResource, fakeResourceTypes, fromVersion, manuallyTriggered)
+			check, created, err = checkFactory.TryCreateCheck(context.TODO(), fakeResource, fakeResourceTypes, fromVersion, manuallyTriggered)
 		})
 
 		Context("when the resource parent type is not a custom type", func() {
@@ -238,7 +235,7 @@ var _ = Describe("CheckFactory", func() {
 								Context("when fetching the latest version returns a version", func() {
 
 									BeforeEach(func() {
-										err = resourceConfigScope.SaveVersions([]atc.Version{{"some": "version"}})
+										err = resourceConfigScope.SaveVersions(nil, []atc.Version{{"some": "version"}})
 										Expect(err).NotTo(HaveOccurred())
 									})
 
@@ -325,6 +322,7 @@ var _ = Describe("CheckFactory", func() {
 				false,
 				atc.Plan{Check: &atc.CheckPlan{Name: "some-name", Type: "some-type"}},
 				metadata,
+				map[string]string{"fake": "span"},
 			)
 		})
 
@@ -353,6 +351,7 @@ var _ = Describe("CheckFactory", func() {
 					false,
 					atc.Plan{},
 					metadata,
+					map[string]string{"fake": "span"},
 				)
 				Expect(created).To(BeTrue())
 				Expect(err).NotTo(HaveOccurred())
@@ -414,6 +413,7 @@ var _ = Describe("CheckFactory", func() {
 					false,
 					atc.Plan{},
 					metadata,
+					map[string]string{"fake": "span"},
 				)
 				Expect(created).To(BeTrue())
 				Expect(err).NotTo(HaveOccurred())
@@ -422,6 +422,73 @@ var _ = Describe("CheckFactory", func() {
 			It("returns the resource checks", func() {
 				Expect(checks).To(HaveLen(1))
 				Expect(checks[0]).To(Equal(check))
+			})
+		})
+
+		Context("when there are manually triggered checks and non manually triggered checks", func() {
+			var nonManuallyTriggeredCheck, manuallyTriggeredCheck db.Check
+
+			BeforeEach(func() {
+				defaultPipeline, _, err = defaultTeam.SavePipeline("default-pipeline", atc.Config{
+					Resources: atc.ResourceConfigs{
+						{
+							Name: "some-resource",
+							Type: "some-base-resource-type",
+							Source: atc.Source{
+								"some": "source",
+							},
+						},
+						{
+							Name: "some-other-resource",
+							Type: "some-base-resource-type",
+							Source: atc.Source{
+								"some": "other-source",
+							},
+						},
+					},
+				}, db.ConfigVersion(1), false)
+				Expect(err).NotTo(HaveOccurred())
+
+				resource, found, err := defaultPipeline.Resource("some-resource")
+				Expect(err).NotTo(HaveOccurred())
+				Expect(found).To(BeTrue())
+
+				otherResource, found, err := defaultPipeline.Resource("some-other-resource")
+				Expect(err).NotTo(HaveOccurred())
+				Expect(found).To(BeTrue())
+
+				resourceConfigScope, err := resource.SetResourceConfig(atc.Source{"some": "source"}, atc.VersionedResourceTypes{})
+				Expect(err).NotTo(HaveOccurred())
+
+				otherResourceConfigScope, err := otherResource.SetResourceConfig(atc.Source{"some": "other-source"}, atc.VersionedResourceTypes{})
+				Expect(err).NotTo(HaveOccurred())
+
+				var created bool
+				nonManuallyTriggeredCheck, created, err = checkFactory.CreateCheck(
+					resourceConfigScope.ID(),
+					false,
+					atc.Plan{},
+					metadata,
+					map[string]string{"fake": "span"},
+				)
+				Expect(created).To(BeTrue())
+				Expect(err).NotTo(HaveOccurred())
+
+				manuallyTriggeredCheck, created, err = checkFactory.CreateCheck(
+					otherResourceConfigScope.ID(),
+					true,
+					atc.Plan{},
+					metadata,
+					map[string]string{"fake": "span"},
+				)
+				Expect(created).To(BeTrue())
+				Expect(err).NotTo(HaveOccurred())
+			})
+
+			It("returns the manually triggered checks first", func() {
+				Expect(checks).To(HaveLen(2))
+				Expect(checks[0].ID()).To(Equal(manuallyTriggeredCheck.ID()))
+				Expect(checks[1].ID()).To(Equal(nonManuallyTriggeredCheck.ID()))
 			})
 		})
 	})
@@ -444,14 +511,22 @@ var _ = Describe("CheckFactory", func() {
 
 		Context("when the resources are used", func() {
 
-			BeforeEach(func(){
+			BeforeEach(func() {
 				defaultPipeline, _, err = defaultTeam.SavePipeline("default-pipeline", atc.Config{
 					Jobs: atc.JobConfigs{
 						{
 							Name: "some-job",
-							Plan: atc.PlanSequence{
-								atc.PlanConfig{Get: "some-resource"},
-								atc.PlanConfig{Put: "some-resource-put-only"},
+							PlanSequence: []atc.Step{
+								{
+									Config: &atc.GetStep{
+										Name: "some-resource",
+									},
+								},
+								{
+									Config: &atc.PutStep{
+										Name: "some-resource-put-only",
+									},
+								},
 							},
 						},
 					},

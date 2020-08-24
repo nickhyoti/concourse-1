@@ -1,6 +1,7 @@
 package builder
 
 import (
+	"encoding/json"
 	"io"
 	"strings"
 	"time"
@@ -316,8 +317,8 @@ type checkDelegate struct {
 	clock       clock.Clock
 }
 
-func (d *checkDelegate) SaveVersions(versions []atc.Version) error {
-	return d.check.SaveVersions(versions)
+func (d *checkDelegate) SaveVersions(spanContext db.SpanContext, versions []atc.Version) error {
+	return d.check.SaveVersions(spanContext, versions)
 }
 
 type discardCloser struct {
@@ -387,6 +388,20 @@ func (delegate *buildStepDelegate) buildOutputFilter(str string) string {
 	it := &credVarsIterator{line: str}
 	delegate.credVarsTracker.IterateInterpolatedCreds(it)
 	return it.line
+}
+
+func (delegate *buildStepDelegate) RedactImageSource(source atc.Source) (atc.Source, error) {
+	b, err := json.Marshal(&source)
+	if err != nil {
+		return source, err
+	}
+	s := delegate.buildOutputFilter(string(b))
+	newSource := atc.Source{}
+	err = json.Unmarshal([]byte(s), &newSource)
+	if err != nil {
+		return source, err
+	}
+	return newSource, nil
 }
 
 func (delegate *buildStepDelegate) Stdout() io.Writer {

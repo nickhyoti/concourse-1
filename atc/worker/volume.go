@@ -2,6 +2,7 @@ package worker
 
 import (
 	"context"
+	"github.com/concourse/concourse/tracing"
 	"io"
 
 	"code.cloudfoundry.org/lager"
@@ -26,6 +27,7 @@ type Volume interface {
 	COWStrategy() baggageclaim.COWStrategy
 
 	InitializeResourceCache(db.UsedResourceCache) error
+	GetResourceCacheID() int
 	InitializeTaskCache(logger lager.Logger, jobID int, stepName string, path string, privileged bool) error
 	InitializeArtifact(name string, buildID int) (db.WorkerArtifact, error)
 
@@ -85,7 +87,15 @@ func (v *volume) SetPrivileged(privileged bool) error {
 }
 
 func (v *volume) StreamIn(ctx context.Context, path string, encoding baggageclaim.Encoding, tarStream io.Reader) error {
-	return v.bcVolume.StreamIn(ctx, path, encoding, tarStream)
+	_, span := tracing.StartSpan(ctx, "volume.StreamIn", tracing.Attrs{
+		"destination-volume": v.Handle(),
+		"destination-worker": v.WorkerName(),
+	})
+
+	err := v.bcVolume.StreamIn(ctx, path, encoding, tarStream)
+	tracing.End(span, err)
+
+	return err
 }
 
 func (v *volume) StreamOut(ctx context.Context, path string, encoding baggageclaim.Encoding) (io.ReadCloser, error) {
@@ -112,6 +122,10 @@ func (v *volume) COWStrategy() baggageclaim.COWStrategy {
 
 func (v *volume) InitializeResourceCache(urc db.UsedResourceCache) error {
 	return v.dbVolume.InitializeResourceCache(urc)
+}
+
+func (v *volume) GetResourceCacheID() int {
+	return v.dbVolume.GetResourceCacheID()
 }
 
 func (v *volume) InitializeArtifact(name string, buildID int) (db.WorkerArtifact, error) {

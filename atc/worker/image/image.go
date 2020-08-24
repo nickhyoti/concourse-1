@@ -2,6 +2,7 @@ package image
 
 import (
 	"context"
+	"github.com/concourse/concourse/tracing"
 	"io"
 	"net/url"
 	"path"
@@ -77,6 +78,9 @@ func (i *imageProvidedByPreviousStepOnDifferentWorker) FetchForContainer(
 	logger lager.Logger,
 	container db.CreatingContainer,
 ) (worker.FetchedImage, error) {
+	ctx, span := tracing.StartSpan(ctx, "imageProvidedByPreviousStepOnDifferentWorker.FetchForContainer", tracing.Attrs{"container_id": container.Handle()})
+	defer span.End()
+
 	imageVolume, err := i.volumeClient.FindOrCreateVolumeForContainer(
 		logger,
 		worker.VolumeSpec{
@@ -101,6 +105,7 @@ func (i *imageProvidedByPreviousStepOnDifferentWorker) FetchForContainer(
 		logger.Error("failed-to-stream-image-artifact-source", err)
 		return worker.FetchedImage{}, err
 	}
+	logger.Debug("streamed-non-local-image-volume")
 
 	imageMetadataReader, err := i.imageSpec.ImageArtifactSource.StreamFile(ctx, logger, ImageMetadataFile)
 	if err != nil {

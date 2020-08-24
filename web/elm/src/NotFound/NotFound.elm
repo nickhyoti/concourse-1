@@ -3,6 +3,7 @@ module NotFound.NotFound exposing
     , handleDelivery
     , init
     , subscriptions
+    , tooltip
     , view
     )
 
@@ -23,6 +24,7 @@ import Message.TopLevelMessage exposing (TopLevelMessage(..))
 import NotFound.Model exposing (Model)
 import Routes
 import SideBar.SideBar as SideBar
+import Tooltip
 import Views.Styles
 import Views.TopBar as TopBar
 
@@ -61,14 +63,7 @@ view session model =
             ]
         , Html.div
             (id "page-below-top-bar" :: Views.Styles.pageBelowTopBar model.route)
-            [ SideBar.view
-                { expandedTeams = session.expandedTeams
-                , pipelines = session.pipelines
-                , hovered = session.hovered
-                , isSideBarOpen = session.isSideBarOpen
-                , screenSize = session.screenSize
-                }
-                Nothing
+            [ SideBar.view session Nothing
             , Html.div [ class "notfound" ]
                 [ Html.div [ class "title" ] [ Html.text "404" ]
                 , Html.div [ class "reason" ] [ Html.text "this page was not found" ]
@@ -82,6 +77,11 @@ view session model =
                 ]
             ]
         ]
+
+
+tooltip : Model -> a -> Maybe Tooltip.Tooltip
+tooltip _ _ =
+    Nothing
 
 
 subscriptions : List Subscription

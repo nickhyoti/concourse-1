@@ -15,6 +15,8 @@ import (
 	"github.com/concourse/concourse/atc/db/lock"
 )
 
+var ErrPinnedThroughConfig = errors.New("resource is pinned through config")
+
 //go:generate counterfeiter . Resource
 
 type Resource interface {
@@ -35,6 +37,7 @@ type Resource interface {
 	CheckSetupError() error
 	CheckError() error
 	WebhookToken() string
+	Config() atc.ResourceConfig
 	ConfigPinnedVersion() atc.Version
 	APIPinnedVersion() atc.Version
 	PinComment() string
@@ -83,6 +86,7 @@ var resourcesQuery = psql.Select(
 	"rs.check_error",
 	"rp.version",
 	"rp.comment_text",
+	"rp.config",
 ).
 	From("resources r").
 	Join("pipelines p ON p.id = r.pipeline_id").
@@ -96,25 +100,19 @@ type resource struct {
 
 	id                    int
 	name                  string
-	public                bool
 	teamID                int
 	teamName              string
 	type_                 string
-	source                atc.Source
-	checkEvery            string
-	checkTimeout          string
 	lastCheckStartTime    time.Time
 	lastCheckEndTime      time.Time
-	tags                  atc.Tags
 	checkSetupError       error
 	checkError            error
-	webhookToken          string
+	config                atc.ResourceConfig
 	configPinnedVersion   atc.Version
 	apiPinnedVersion      atc.Version
 	pinComment            string
 	resourceConfigID      int
 	resourceConfigScopeID int
-	icon                  string
 }
 
 func newEmptyResource(conn Conn, lockFactory lock.LockFactory) *resource {
@@ -143,45 +141,34 @@ func (resources Resources) Lookup(name string) (Resource, bool) {
 
 func (resources Resources) Configs() atc.ResourceConfigs {
 	var configs atc.ResourceConfigs
-
 	for _, r := range resources {
-		configs = append(configs, atc.ResourceConfig{
-			Name:         r.Name(),
-			Public:       r.Public(),
-			WebhookToken: r.WebhookToken(),
-			Type:         r.Type(),
-			Source:       r.Source(),
-			CheckEvery:   r.CheckEvery(),
-			Tags:         r.Tags(),
-			Version:      r.ConfigPinnedVersion(),
-			Icon:         r.Icon(),
-		})
+		configs = append(configs, r.Config())
 	}
-
 	return configs
 }
 
 func (r *resource) ID() int                          { return r.id }
 func (r *resource) Name() string                     { return r.name }
-func (r *resource) Public() bool                     { return r.public }
+func (r *resource) Public() bool                     { return r.config.Public }
 func (r *resource) TeamID() int                      { return r.teamID }
 func (r *resource) TeamName() string                 { return r.teamName }
 func (r *resource) Type() string                     { return r.type_ }
-func (r *resource) Source() atc.Source               { return r.source }
-func (r *resource) CheckEvery() string               { return r.checkEvery }
-func (r *resource) CheckTimeout() string             { return r.checkTimeout }
+func (r *resource) Source() atc.Source               { return r.config.Source }
+func (r *resource) CheckEvery() string               { return r.config.CheckEvery }
+func (r *resource) CheckTimeout() string             { return r.config.CheckTimeout }
 func (r *resource) LastCheckStartTime() time.Time    { return r.lastCheckStartTime }
 func (r *resource) LastCheckEndTime() time.Time      { return r.lastCheckEndTime }
-func (r *resource) Tags() atc.Tags                   { return r.tags }
+func (r *resource) Tags() atc.Tags                   { return r.config.Tags }
 func (r *resource) CheckSetupError() error           { return r.checkSetupError }
 func (r *resource) CheckError() error                { return r.checkError }
-func (r *resource) WebhookToken() string             { return r.webhookToken }
+func (r *resource) WebhookToken() string             { return r.config.WebhookToken }
+func (r *resource) Config() atc.ResourceConfig       { return r.config }
 func (r *resource) ConfigPinnedVersion() atc.Version { return r.configPinnedVersion }
 func (r *resource) APIPinnedVersion() atc.Version    { return r.apiPinnedVersion }
 func (r *resource) PinComment() string               { return r.pinComment }
 func (r *resource) ResourceConfigID() int            { return r.resourceConfigID }
 func (r *resource) ResourceConfigScopeID() int       { return r.resourceConfigScopeID }
-func (r *resource) Icon() string                     { return r.icon }
+func (r *resource) Icon() string                     { return r.config.Icon }
 
 func (r *resource) HasWebhook() bool { return r.WebhookToken() != "" }
 
@@ -304,7 +291,7 @@ func (r *resource) SaveUncheckedVersion(version atc.Version, metadata ResourceCo
 		return false, err
 	}
 
-	newVersion, err := saveResourceVersion(tx, resourceConfigScope.ID(), version, metadata)
+	newVersion, err := saveResourceVersion(tx, resourceConfigScope.ID(), version, metadata, nil)
 	if err != nil {
 		return false, err
 	}
@@ -587,14 +574,30 @@ func (r *resource) PinVersion(rcvID int) (bool, error) {
 	if err != nil {
 		return false, err
 	}
+	defer Rollback(tx)
+	var pinnedThroughConfig bool
+	err = tx.QueryRow(`
+		SELECT EXISTS (
+			SELECT 1
+			FROM resource_pins
+			WHERE resource_id = $1
+			AND config
+		)`, r.id).Scan(&pinnedThroughConfig)
+	if err != nil {
+		return false, err
+	}
+
+	if pinnedThroughConfig {
+		return false, ErrPinnedThroughConfig
+	}
 
 	results, err := tx.Exec(`
-	    INSERT INTO resource_pins(resource_id, version, comment_text)
+	    INSERT INTO resource_pins(resource_id, version, comment_text, config)
 			VALUES ($1,
 				( SELECT rcv.version
 				FROM resource_config_versions rcv
 				WHERE rcv.id = $2 ),
-				'')
+				'', false)
 			ON CONFLICT (resource_id) DO UPDATE SET version=EXCLUDED.version`, r.id, rcvID)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -630,6 +633,8 @@ func (r *resource) UnpinVersion() error {
 	if err != nil {
 		return err
 	}
+
+	defer tx.Rollback()
 
 	results, err := psql.Delete("resource_pins").
 		Where(sq.Eq{"resource_pins.resource_id": r.id}).
@@ -711,12 +716,13 @@ func (r *resource) NotifyScan() error {
 
 func scanResource(r *resource, row scannable) error {
 	var (
-		configBlob                                                                  []byte
-		checkErr, rcsCheckErr, nonce, rcID, rcScopeID, apiPinnedVersion, pinComment sql.NullString
-		lastCheckStartTime, lastCheckEndTime                                        pq.NullTime
+		configBlob                                                               sql.NullString
+		checkErr, rcsCheckErr, nonce, rcID, rcScopeID, pinnedVersion, pinComment sql.NullString
+		lastCheckStartTime, lastCheckEndTime                                     pq.NullTime
+		pinnedThroughConfig                                                      sql.NullBool
 	)
 
-	err := row.Scan(&r.id, &r.name, &r.type_, &configBlob, &checkErr, &lastCheckStartTime, &lastCheckEndTime, &r.pipelineID, &nonce, &rcID, &rcScopeID, &r.pipelineName, &r.teamID, &r.teamName, &rcsCheckErr, &apiPinnedVersion, &pinComment)
+	err := row.Scan(&r.id, &r.name, &r.type_, &configBlob, &checkErr, &lastCheckStartTime, &lastCheckEndTime, &r.pipelineID, &nonce, &rcID, &rcScopeID, &r.pipelineName, &r.teamID, &r.teamName, &rcsCheckErr, &pinnedVersion, &pinComment, &pinnedThroughConfig)
 	if err != nil {
 		return err
 	}
@@ -731,33 +737,37 @@ func scanResource(r *resource, row scannable) error {
 		noncense = &nonce.String
 	}
 
-	decryptedConfig, err := es.Decrypt(string(configBlob), noncense)
-	if err != nil {
-		return err
-	}
+	if configBlob.Valid {
+		decryptedConfig, err := es.Decrypt(configBlob.String, noncense)
+		if err != nil {
+			return err
+		}
 
-	var config atc.ResourceConfig
-	err = json.Unmarshal(decryptedConfig, &config)
-	if err != nil {
-		return err
-	}
-
-	r.public = config.Public
-	r.source = config.Source
-	r.checkEvery = config.CheckEvery
-	r.checkTimeout = config.CheckTimeout
-	r.tags = config.Tags
-	r.webhookToken = config.WebhookToken
-	r.configPinnedVersion = config.Version
-	r.icon = config.Icon
-
-	if apiPinnedVersion.Valid {
-		err = json.Unmarshal([]byte(apiPinnedVersion.String), &r.apiPinnedVersion)
+		err = json.Unmarshal(decryptedConfig, &r.config)
 		if err != nil {
 			return err
 		}
 	} else {
+		r.config = atc.ResourceConfig{}
+	}
+
+	if pinnedVersion.Valid {
+		var version atc.Version
+		err = json.Unmarshal([]byte(pinnedVersion.String), &version)
+		if err != nil {
+			return err
+		}
+
+		if pinnedThroughConfig.Valid && pinnedThroughConfig.Bool {
+			r.configPinnedVersion = version
+			r.apiPinnedVersion = nil
+		} else {
+			r.configPinnedVersion = nil
+			r.apiPinnedVersion = version
+		}
+	} else {
 		r.apiPinnedVersion = nil
+		r.configPinnedVersion = nil
 	}
 
 	if pinComment.Valid {

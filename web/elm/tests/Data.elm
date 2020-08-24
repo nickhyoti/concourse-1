@@ -1,5 +1,11 @@
 module Data exposing
     ( check
+    , dashboardPipeline
+    , elementPosition
+    , httpInternalServerError
+    , httpNotFound
+    , httpNotImplemented
+    , httpUnauthorized
     , job
     , jobBuild
     , jobId
@@ -18,10 +24,69 @@ module Data exposing
     , withPublic
     )
 
+import Browser.Dom
 import Concourse
 import Concourse.BuildStatus as BuildStatus
+import Dashboard.Group.Models
 import Dict exposing (Dict)
+import Http
 import Time
+
+
+httpUnauthorized : Result Http.Error a
+httpUnauthorized =
+    Err <|
+        Http.BadStatus
+            { url = "http://example.com"
+            , status =
+                { code = 401
+                , message = ""
+                }
+            , headers = Dict.empty
+            , body = ""
+            }
+
+
+httpNotFound : Result Http.Error a
+httpNotFound =
+    Err <|
+        Http.BadStatus
+            { url = "http://example.com"
+            , status =
+                { code = 404
+                , message = "not found"
+                }
+            , headers = Dict.empty
+            , body = ""
+            }
+
+
+httpNotImplemented : Result Http.Error a
+httpNotImplemented =
+    Err <|
+        Http.BadStatus
+            { url = "http://example.com"
+            , status =
+                { code = 501
+                , message = "not implemented"
+                }
+            , headers = Dict.empty
+            , body = ""
+            }
+
+
+httpInternalServerError : Result Http.Error a
+httpInternalServerError =
+    Err <|
+        Http.BadStatus
+            { url = "http://example.com"
+            , status =
+                { code = 500
+                , message = "internal server error"
+                }
+            , headers = Dict.empty
+            , body = ""
+            }
 
 
 check : Concourse.CheckStatus -> Concourse.Check
@@ -80,6 +145,21 @@ pipeline team id =
     , public = True
     , teamName = team
     , groups = []
+    }
+
+
+dashboardPipeline : Int -> Bool -> Dashboard.Group.Models.Pipeline
+dashboardPipeline id public =
+    { id = id
+    , name = pipelineName
+    , teamName = teamName
+    , public = public
+    , isToggleLoading = False
+    , isVisibilityLoading = False
+    , paused = False
+    , archived = False
+    , stale = False
+    , jobsDisabled = False
     }
 
 
@@ -184,4 +264,25 @@ jobBuild status =
                 Just <| Time.millisToPosix 0
         }
     , reapTime = Nothing
+    }
+
+
+elementPosition : Browser.Dom.Element
+elementPosition =
+    { scene =
+        { width = 0
+        , height = 0
+        }
+    , viewport =
+        { width = 0
+        , height = 0
+        , x = 0
+        , y = 0
+        }
+    , element =
+        { x = 0
+        , y = 0
+        , width = 1
+        , height = 1
+        }
     }

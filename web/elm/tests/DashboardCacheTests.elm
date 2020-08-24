@@ -6,7 +6,7 @@ import Concourse.BuildStatus exposing (BuildStatus(..))
 import Data
 import Message.Callback exposing (Callback(..))
 import Message.Effects exposing (Effect(..))
-import Message.Message as Message
+import Message.Message as Message exposing (DropTarget(..))
 import Message.Subscription as Subscription exposing (Delivery(..))
 import Message.TopLevelMessage as TopLevelMessage
 import Test exposing (Test, describe, test)
@@ -211,6 +211,23 @@ all =
                         )
                     |> Tuple.second
                     |> Common.contains (SaveCachedPipelines [ Data.pipeline "team" 0 ])
+        , test "ignores cached pipelines if we've already fetched from network" <|
+            \_ ->
+                Common.init "/"
+                    |> Application.handleCallback
+                        (AllPipelinesFetched <|
+                            Ok <|
+                                [ Data.pipeline "team" 0 ]
+                        )
+                    |> Tuple.first
+                    |> Application.handleDelivery
+                        (CachedPipelinesReceived <|
+                            Ok <|
+                                []
+                        )
+                    |> Tuple.first
+                    |> Common.queryView
+                    |> Query.has [ class "pipeline-wrapper", containing [ text "pipeline-0" ] ]
         , test "does not save pipelines to cache when fetched with no change" <|
             \_ ->
                 Common.init "/"
@@ -237,10 +254,10 @@ all =
                         )
                     |> Tuple.first
                     |> Application.update
-                        (TopLevelMessage.Update <| Message.DragStart "team" 0)
+                        (TopLevelMessage.Update <| Message.DragStart "team" "pipeline-0")
                     |> Tuple.first
                     |> Application.update
-                        (TopLevelMessage.Update <| Message.DragOver "team" 2)
+                        (TopLevelMessage.Update <| Message.DragOver <| After "pipeline-1")
                     |> Tuple.first
                     |> Application.update
                         (TopLevelMessage.Update <| Message.DragEnd)

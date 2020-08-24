@@ -38,6 +38,7 @@ func (e ErrResourceNotFound) Error() string {
 
 type GetDelegate interface {
 	ImageVersionDetermined(db.UsedResourceCache) error
+	RedactImageSource(source atc.Source) (atc.Source, error)
 
 	Stdout() io.Writer
 	Stderr() io.Writer
@@ -144,6 +145,7 @@ func (step *GetStep) run(ctx context.Context, state RunState) error {
 		TeamID: step.metadata.TeamID,
 		Env:    step.metadata.Env(),
 	}
+	tracing.Inject(ctx, &containerSpec)
 
 	workerSpec := worker.WorkerSpec{
 		ResourceType:  step.plan.Type,

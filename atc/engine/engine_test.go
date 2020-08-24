@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"code.cloudfoundry.org/lager"
+	"code.cloudfoundry.org/lager/lagerctx"
 	"code.cloudfoundry.org/lager/lagertest"
 	"github.com/concourse/concourse/atc"
 	"github.com/concourse/concourse/atc/db"
@@ -81,21 +82,16 @@ var _ = Describe("Engine", func() {
 		var (
 			build     Runnable
 			release   chan bool
-			cancel    chan bool
 			waitGroup *sync.WaitGroup
 		)
 
 		BeforeEach(func() {
 
-			ctx := context.Background()
-			cancel = make(chan bool)
 			release = make(chan bool)
 			trackedStates := new(sync.Map)
 			waitGroup = new(sync.WaitGroup)
 
 			build = NewBuild(
-				ctx,
-				func() { cancel <- true },
 				fakeBuild,
 				fakeStepBuilder,
 				release,
@@ -105,14 +101,18 @@ var _ = Describe("Engine", func() {
 		})
 
 		Describe("Run", func() {
-			var logger lager.Logger
+			var (
+				logger lager.Logger
+				ctx    context.Context
+			)
 
 			BeforeEach(func() {
 				logger = lagertest.NewTestLogger("test")
+				ctx = context.Background()
 			})
 
 			JustBeforeEach(func() {
-				build.Run(logger)
+				build.Run(lagerctx.NewContext(ctx, logger))
 			})
 
 			Context("when acquiring the lock succeeds", func() {
@@ -200,9 +200,10 @@ var _ = Describe("Engine", func() {
 									}
 								})
 
-								It("cancels the context", func() {
+								It("cancels the context given to the step", func() {
 									waitGroup.Wait()
-									Expect(<-cancel).To(BeTrue())
+									stepCtx, _ := fakeStep.RunArgsForCall(0)
+									Expect(stepCtx.Done()).To(BeClosed())
 								})
 							})
 
@@ -251,6 +252,18 @@ var _ = Describe("Engine", func() {
 							Context("when the build finishes with cancelled error", func() {
 								BeforeEach(func() {
 									fakeStep.RunReturns(context.Canceled)
+								})
+
+								It("finishes the build", func() {
+									waitGroup.Wait()
+									Expect(fakeBuild.FinishCallCount()).To(Equal(1))
+									Expect(fakeBuild.FinishArgsForCall(0)).To(Equal(db.BuildStatusAborted))
+								})
+							})
+
+							Context("when the build finishes with a wrapped cancelled error", func() {
+								BeforeEach(func() {
+									fakeStep.RunReturns(fmt.Errorf("but im not a wrapper: %w", context.Canceled))
 								})
 
 								It("finishes the build", func() {
@@ -351,21 +364,16 @@ var _ = Describe("Engine", func() {
 		var (
 			check     Runnable
 			release   chan bool
-			cancel    chan bool
 			waitGroup *sync.WaitGroup
 		)
 
 		BeforeEach(func() {
 
-			ctx := context.Background()
-			cancel = make(chan bool)
 			release = make(chan bool)
 			trackedStates := new(sync.Map)
 			waitGroup = new(sync.WaitGroup)
 
 			check = NewCheck(
-				ctx,
-				func() { cancel <- true },
 				fakeCheck,
 				fakeStepBuilder,
 				release,
@@ -387,7 +395,7 @@ var _ = Describe("Engine", func() {
 			})
 
 			JustBeforeEach(func() {
-				check.Run(logger)
+				check.Run(lagerctx.NewContext(context.TODO(), logger))
 			})
 
 			Context("when acquiring the lock succeeds", func() {

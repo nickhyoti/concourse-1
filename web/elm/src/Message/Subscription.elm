@@ -8,7 +8,15 @@ port module Message.Subscription exposing
     )
 
 import Browser
-import Browser.Events exposing (onClick, onKeyDown, onKeyUp, onMouseMove, onResize)
+import Browser.Events
+    exposing
+        ( onClick
+        , onKeyDown
+        , onKeyUp
+        , onMouseMove
+        , onMouseUp
+        , onResize
+        )
 import Build.StepTree.Models exposing (BuildEventEnvelope)
 import Concourse exposing (decodeJob, decodePipeline, decodeTeam)
 import Concourse.BuildEvents exposing (decodeBuildEventEnvelope)
@@ -26,6 +34,7 @@ import Message.Storage as Storage
         , tokenKey
         )
 import Routes
+import SideBar.State exposing (SideBarState, decodeSideBarState)
 import Time
 import Url
 
@@ -42,6 +51,15 @@ port reportIsVisible : (( String, Bool ) -> msg) -> Sub msg
 port rawHttpResponse : (String -> msg) -> Sub msg
 
 
+port scrolledToId : (( String, String ) -> msg) -> Sub msg
+
+
+type alias Position =
+    { x : Float
+    , y : Float
+    }
+
+
 type RawHttpResponse
     = Success
     | Timeout
@@ -52,6 +70,7 @@ type RawHttpResponse
 type Subscription
     = OnClockTick Interval
     | OnMouse
+    | OnMouseUp
     | OnKeyDown
     | OnKeyUp
     | OnWindowResize
@@ -64,12 +83,14 @@ type Subscription
     | OnCachedJobsReceived
     | OnCachedPipelinesReceived
     | OnCachedTeamsReceived
+    | OnScrolledToId
 
 
 type Delivery
     = KeyDown Keyboard.KeyEvent
     | KeyUp Keyboard.KeyEvent
-    | Moused
+    | Moused Position
+    | MouseUp
     | ClockTicked Interval Time.Posix
     | WindowResized Float Float
     | NonHrefLinkClicked String -- must be a String because we can't parse it out too easily :(
@@ -79,10 +100,11 @@ type Delivery
     | ElementVisible ( String, Bool )
     | TokenSentToFly RawHttpResponse
     | TokenReceived (Result Json.Decode.Error String)
-    | SideBarStateReceived (Result Json.Decode.Error Bool)
+    | SideBarStateReceived (Result Json.Decode.Error SideBarState)
     | CachedJobsReceived (Result Json.Decode.Error (List Concourse.Job))
     | CachedPipelinesReceived (Result Json.Decode.Error (List Concourse.Pipeline))
     | CachedTeamsReceived (Result Json.Decode.Error (List Concourse.Team))
+    | ScrolledToId ( String, String )
     | Noop
 
 
@@ -100,9 +122,12 @@ runSubscription s =
 
         OnMouse ->
             Sub.batch
-                [ onMouseMove (Json.Decode.succeed Moused)
-                , onClick (Json.Decode.succeed Moused)
+                [ onMouseMove (Json.Decode.map Moused decodePosition)
+                , onClick (Json.Decode.map Moused decodePosition)
                 ]
+
+        OnMouseUp ->
+            onMouseUp <| Json.Decode.succeed MouseUp
 
         OnKeyDown ->
             onKeyDown (Keyboard.decodeKeyEvent |> Json.Decode.map KeyDown)
@@ -151,7 +176,7 @@ runSubscription s =
         OnSideBarStateReceived ->
             receivedFromSessionStorage <|
                 decodeStorageResponse sideBarStateKey
-                    Json.Decode.bool
+                    decodeSideBarState
                     SideBarStateReceived
 
         OnCachedJobsReceived ->
@@ -177,6 +202,16 @@ runSubscription s =
 
         OnTokenSentToFly ->
             rawHttpResponse (decodeHttpResponse >> TokenSentToFly)
+
+        OnScrolledToId ->
+            scrolledToId ScrolledToId
+
+
+decodePosition : Json.Decode.Decoder Position
+decodePosition =
+    Json.Decode.map2 Position
+        (Json.Decode.field "pageX" Json.Decode.float)
+        (Json.Decode.field "pageY" Json.Decode.float)
 
 
 decodeStorageResponse : Storage.Key -> Json.Decode.Decoder a -> (Result Json.Decode.Error a -> Delivery) -> ( Storage.Key, Storage.Value ) -> Delivery

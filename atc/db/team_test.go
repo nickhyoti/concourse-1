@@ -1572,28 +1572,34 @@ var _ = Describe("Team", func() {
 						Serial:       true,
 						SerialGroups: []string{"serial-group-1", "serial-group-2"},
 
-						Plan: atc.PlanSequence{
+						PlanSequence: []atc.Step{
 							{
-								Get:      "some-input",
-								Resource: "some-resource",
-								Params: atc.Params{
-									"some-param": "some-value",
-								},
-								Passed:  []string{"job-1", "job-2"},
-								Trigger: true,
-							},
-							{
-								Task:       "some-task",
-								Privileged: true,
-								File:       "some/config/path.yml",
-								TaskConfig: &atc.TaskConfig{
-									RootfsURI: "some-image",
+								Config: &atc.GetStep{
+									Name:     "some-input",
+									Resource: "some-resource",
+									Params: atc.Params{
+										"some-param": "some-value",
+									},
+									Passed:  []string{"job-1", "job-2"},
+									Trigger: true,
 								},
 							},
 							{
-								Put: "some-resource",
-								Params: atc.Params{
-									"some-param": "some-value",
+								Config: &atc.TaskStep{
+									Name:       "some-task",
+									Privileged: true,
+									ConfigPath: "some/config/path.yml",
+									Config: &atc.TaskConfig{
+										RootfsURI: "some-image",
+									},
+								},
+							},
+							{
+								Config: &atc.PutStep{
+									Name: "some-resource",
+									Params: atc.Params{
+										"some-param": "some-value",
+									},
 								},
 							},
 						},
@@ -1777,7 +1783,7 @@ var _ = Describe("Team", func() {
 			rc, err := resource.SetResourceConfig(atc.Source{"source-config": "some-value"}, atc.VersionedResourceTypes{})
 			Expect(err).ToNot(HaveOccurred())
 
-			err = rc.SaveVersions([]atc.Version{
+			err = rc.SaveVersions(nil, []atc.Version{
 				atc.Version{"version": "v1"},
 				atc.Version{"version": "v2"},
 			})
@@ -1810,6 +1816,32 @@ var _ = Describe("Team", func() {
 			Expect(resource.APIPinnedVersion()).To(BeNil())
 		})
 
+		It("clears out config pinned version when it is removed", func() {
+			config.Resources[0].Version = atc.Version{
+				"version": "v1",
+			}
+
+			pipeline, _, err := team.SavePipeline(pipelineName, config, 0, false)
+			Expect(err).ToNot(HaveOccurred())
+
+			resource, found, err := pipeline.Resource("some-resource")
+			Expect(err).ToNot(HaveOccurred())
+			Expect(found).To(BeTrue())
+			Expect(resource.ConfigPinnedVersion()).To(Equal(atc.Version{"version": "v1"}))
+			Expect(resource.APIPinnedVersion()).To(BeNil())
+
+			config.Resources[0].Version = nil
+
+			savedPipeline, _, err := team.SavePipeline(pipelineName, config, pipeline.ConfigVersion(), false)
+			Expect(err).ToNot(HaveOccurred())
+
+			resource, found, err = savedPipeline.Resource("some-resource")
+			Expect(err).ToNot(HaveOccurred())
+			Expect(found).To(BeTrue())
+			Expect(resource.ConfigPinnedVersion()).To(BeNil())
+			Expect(resource.APIPinnedVersion()).To(BeNil())
+		})
+
 		It("does not clear the api pinned version when resaving pipeline config", func() {
 			pipeline, _, err := team.SavePipeline(pipelineName, config, 0, false)
 			Expect(err).ToNot(HaveOccurred())
@@ -1832,7 +1864,7 @@ var _ = Describe("Team", func() {
 			rc, err := resource.SetResourceConfig(atc.Source{"source-config": "some-value"}, atc.VersionedResourceTypes{})
 			Expect(err).ToNot(HaveOccurred())
 
-			err = rc.SaveVersions([]atc.Version{
+			err = rc.SaveVersions(nil, []atc.Version{
 				atc.Version{"version": "v1"},
 				atc.Version{"version": "v2"},
 			})
@@ -1874,19 +1906,23 @@ var _ = Describe("Team", func() {
 					Serial:       true,
 					SerialGroups: []string{"serial-group-1", "serial-group-2"},
 
-					Plan: atc.PlanSequence{
+					PlanSequence: []atc.Step{
 						{
-							Task:       "some-task",
-							Privileged: true,
-							File:       "some/config/path.yml",
-							TaskConfig: &atc.TaskConfig{
-								RootfsURI: "some-image",
+							Config: &atc.TaskStep{
+								Name:       "some-task",
+								Privileged: true,
+								ConfigPath: "some/config/path.yml",
+								Config: &atc.TaskConfig{
+									RootfsURI: "some-image",
+								},
 							},
 						},
 						{
-							Put: "some-resource",
-							Params: atc.Params{
-								"some-param": "some-value",
+							Config: &atc.PutStep{
+								Name: "some-resource",
+								Params: atc.Params{
+									"some-param": "some-value",
+								},
 							},
 						},
 					},
@@ -2009,28 +2045,42 @@ var _ = Describe("Team", func() {
 					Serial:       true,
 					SerialGroups: []string{"serial-group-1", "serial-group-2"},
 
-					Plan: atc.PlanSequence{
+					PlanSequence: []atc.Step{
 						{
-							Get:      "some-input",
-							Resource: "some-resource",
-							Params: atc.Params{
-								"some-param": "some-value",
-							},
-							Passed:  []string{"job-1", "job-2"},
-							Trigger: true,
-						},
-						{
-							Task:       "some-task",
-							Privileged: true,
-							File:       "some/config/path.yml",
-							TaskConfig: &atc.TaskConfig{
-								RootfsURI: "some-image",
+							Config: &atc.GetStep{
+								Name:     "some-input",
+								Resource: "some-resource",
+								Params: atc.Params{
+									"some-param": "some-value",
+								},
+								Passed:  []string{"job-1", "job-2"},
+								Trigger: true,
 							},
 						},
 						{
-							Put: "some-resource",
-							Params: atc.Params{
-								"some-param": "some-value",
+							Config: &atc.TaskStep{
+								Name:       "some-task",
+								ConfigPath: "some/config/path.yml",
+							},
+						},
+						{
+							Config: &atc.PutStep{
+								Name: "some-resource",
+								Params: atc.Params{
+									"some-param": "some-value",
+								},
+							},
+						},
+						{
+							Config: &atc.DoStep{
+								Steps: []atc.Step{
+									{
+										Config: &atc.TaskStep{
+											Name:       "some-nested-task",
+											ConfigPath: "some/config/path.yml",
+										},
+									},
+								},
 							},
 						},
 					},
@@ -2060,6 +2110,22 @@ var _ = Describe("Team", func() {
 
 				otherUpdatedJob, _, _ := updatedPipeline.Job("new-other-job")
 				Expect(otherUpdatedJob.ID()).To(Equal(otherJob.ID()))
+			})
+
+			It("should handle when old job has the same name as new job", func() {
+				pipeline, _, err := team.SavePipeline(pipelineName, config, 0, false)
+				Expect(err).ToNot(HaveOccurred())
+
+				job, _, _ := pipeline.Job("some-job")
+
+				config.Jobs[0].Name = "some-job"
+				config.Jobs[0].OldName = "some-job"
+
+				updatedPipeline, _, err := team.SavePipeline(pipelineName, config, pipeline.ConfigVersion(), false)
+				Expect(err).ToNot(HaveOccurred())
+
+				updatedJob, _, _ := updatedPipeline.Job("some-job")
+				Expect(updatedJob.ID()).To(Equal(job.ID()))
 			})
 
 			It("should return an error when there is a swap with job name", func() {
@@ -2095,6 +2161,269 @@ var _ = Describe("Team", func() {
 			})
 		})
 
+		Context("update resource names but keeps data", func() {
+
+			BeforeEach(func() {
+
+				config.Resources = append(config.Resources, atc.ResourceConfig{
+					Name: "new-resource",
+					Type: "some-type",
+					Source: atc.Source{
+						"source-config": "some-value",
+					},
+				})
+			})
+
+			It("should successfully update resource name", func() {
+				pipeline, _, err := team.SavePipeline(pipelineName, config, 0, false)
+				Expect(err).ToNot(HaveOccurred())
+
+				resource, _, _ := pipeline.Resource("some-resource")
+
+				config.Resources[0].Name = "renamed-resource"
+				config.Resources[0].OldName = "some-resource"
+
+				config.Jobs[0].PlanSequence = []atc.Step{
+					{
+						Config: &atc.GetStep{
+							Name:     "some-input",
+							Resource: "renamed-resource",
+							Params: atc.Params{
+								"some-param": "some-value",
+							},
+							Passed:  []string{"job-1", "job-2"},
+							Trigger: true,
+						},
+					},
+				}
+
+				updatedPipeline, _, err := team.SavePipeline(pipelineName, config, pipeline.ConfigVersion(), false)
+				Expect(err).ToNot(HaveOccurred())
+
+				updatedResource, _, _ := updatedPipeline.Resource("renamed-resource")
+				Expect(updatedResource.ID()).To(Equal(resource.ID()))
+			})
+
+			It("should handle when there are multiple name changes", func() {
+				pipeline, _, err := team.SavePipeline(pipelineName, config, 0, false)
+				Expect(err).ToNot(HaveOccurred())
+
+				resource, _, _ := pipeline.Resource("some-resource")
+				otherResource, _, _ := pipeline.Resource("new-resource")
+
+				config.Resources[0].Name = "new-resource"
+				config.Resources[0].OldName = "some-resource"
+
+				config.Resources[1].Name = "new-other-resource"
+				config.Resources[1].OldName = "new-resource"
+
+				config.Jobs[0].PlanSequence = []atc.Step{
+					{
+						Config: &atc.GetStep{
+							Name:     "some-input",
+							Resource: "new-resource",
+							Params: atc.Params{
+								"some-param": "some-value",
+							},
+							Passed:  []string{"job-1", "job-2"},
+							Trigger: true,
+						},
+					},
+				}
+
+				updatedPipeline, _, err := team.SavePipeline(pipelineName, config, pipeline.ConfigVersion(), false)
+				Expect(err).ToNot(HaveOccurred())
+
+				updatedResource, _, _ := updatedPipeline.Resource("new-resource")
+				Expect(updatedResource.ID()).To(Equal(resource.ID()))
+
+				otherUpdatedResource, _, _ := updatedPipeline.Resource("new-other-resource")
+				Expect(otherUpdatedResource.ID()).To(Equal(otherResource.ID()))
+			})
+
+			It("should handle when old resource has the same name as new resource", func() {
+				pipeline, _, err := team.SavePipeline(pipelineName, config, 0, false)
+				Expect(err).ToNot(HaveOccurred())
+
+				resource, _, _ := pipeline.Resource("some-resource")
+
+				config.Resources[0].Name = "some-resource"
+				config.Resources[0].OldName = "some-resource"
+
+				updatedPipeline, _, err := team.SavePipeline(pipelineName, config, pipeline.ConfigVersion(), false)
+				Expect(err).ToNot(HaveOccurred())
+
+				updatedResource, _, _ := updatedPipeline.Resource("some-resource")
+				Expect(updatedResource.ID()).To(Equal(resource.ID()))
+			})
+
+			It("should return an error when there is a swap with resource name", func() {
+				pipeline, _, err := team.SavePipeline(pipelineName, config, 0, false)
+				Expect(err).ToNot(HaveOccurred())
+
+				config.Resources[0].Name = "new-resource"
+				config.Resources[0].OldName = "some-resource"
+
+				config.Resources[1].Name = "some-resource"
+				config.Resources[1].OldName = "new-resource"
+
+				_, _, err = team.SavePipeline(pipelineName, config, pipeline.ConfigVersion(), false)
+				Expect(err).To(HaveOccurred())
+			})
+
+			Context("when new resource exists but is disabled", func() {
+				var pipeline db.Pipeline
+				var resource db.Resource
+				var rcv db.ResourceConfigVersion
+				var err error
+				var found bool
+
+				BeforeEach(func() {
+					pipeline, _, err = team.SavePipeline(pipelineName, config, 0, false)
+					Expect(err).ToNot(HaveOccurred())
+
+					resource, found, err = pipeline.Resource("some-resource")
+					Expect(err).ToNot(HaveOccurred())
+					Expect(found).To(BeTrue())
+
+					setupTx, err := dbConn.Begin()
+					Expect(err).ToNot(HaveOccurred())
+
+					brt := db.BaseResourceType{
+						Name: "some-type",
+					}
+
+					_, err = brt.FindOrCreate(setupTx, false)
+					Expect(err).NotTo(HaveOccurred())
+					Expect(setupTx.Commit()).To(Succeed())
+
+					resourceScope, err := resource.SetResourceConfig(atc.Source{"some": "other-repository"}, atc.VersionedResourceTypes{})
+					Expect(err).NotTo(HaveOccurred())
+
+					err = resourceScope.SaveVersions(nil, []atc.Version{
+						{"disabled": "version"},
+					})
+					Expect(err).ToNot(HaveOccurred())
+
+					rcv, found, err = resourceScope.FindVersion(atc.Version{"disabled": "version"})
+					Expect(err).ToNot(HaveOccurred())
+					Expect(found).To(BeTrue())
+
+					err = resource.DisableVersion(rcv.ID())
+					Expect(err).ToNot(HaveOccurred())
+
+					versions, _, found, err := resource.Versions(db.Page{Limit: 3}, nil)
+					Expect(err).ToNot(HaveOccurred())
+					Expect(found).To(BeTrue())
+					Expect(versions).To(HaveLen(1))
+					Expect(versions[0].Version).To(Equal(atc.Version{"disabled": "version"}))
+					Expect(versions[0].Enabled).To(BeFalse())
+				})
+
+				It("should not change the disabled version", func() {
+
+					config.Resources[0].Name = "disabled-resource"
+					config.Resources[0].OldName = "some-resource"
+					config.Jobs[0].PlanSequence = []atc.Step{
+						{
+							Config: &atc.GetStep{
+								Name:     "some-input",
+								Resource: "disabled-resource",
+								Params: atc.Params{
+									"some-param": "some-value",
+								},
+								Passed:  []string{"job-1", "job-2"},
+								Trigger: true,
+							},
+						},
+					}
+
+					pipeline, _, err = team.SavePipeline(pipelineName, config, pipeline.ConfigVersion(), false)
+					Expect(err).ToNot(HaveOccurred())
+
+					updatedResource, _, _ := pipeline.Resource("disabled-resource")
+					Expect(updatedResource.ID()).To(Equal(resource.ID()))
+
+					versions, _, found, err := updatedResource.Versions(db.Page{Limit: 3}, nil)
+					Expect(err).ToNot(HaveOccurred())
+					Expect(found).To(BeTrue())
+					Expect(versions).To(HaveLen(1))
+					Expect(versions[0].Version).To(Equal(atc.Version{"disabled": "version"}))
+					Expect(versions[0].Enabled).To(BeFalse())
+				})
+			})
+
+			Context("when new resource exists but the version is pinned", func() {
+				var pipeline db.Pipeline
+				var resource db.Resource
+				var pinnedVersion atc.Version
+				var err error
+
+				BeforeEach(func() {
+					pipeline, _, err = team.SavePipeline(pipelineName, config, 0, false)
+					Expect(err).ToNot(HaveOccurred())
+
+					resource, _, _ = pipeline.Resource("some-resource")
+
+					setupTx, err := dbConn.Begin()
+					Expect(err).ToNot(HaveOccurred())
+
+					brt := db.BaseResourceType{
+						Name: "some-type",
+					}
+
+					_, err = brt.FindOrCreate(setupTx, false)
+					Expect(err).NotTo(HaveOccurred())
+					Expect(setupTx.Commit()).To(Succeed())
+
+					resourceScope, err := resource.SetResourceConfig(atc.Source{"some": "other-repository"}, atc.VersionedResourceTypes{})
+					Expect(err).ToNot(HaveOccurred())
+
+					err = resourceScope.SaveVersions(nil, []atc.Version{
+						atc.Version{"version": "v1"},
+						atc.Version{"version": "v2"},
+						atc.Version{"version": "v3"},
+					})
+					Expect(err).ToNot(HaveOccurred())
+
+					pinnedVersion = atc.Version{"version": "v1"}
+					resConf, found, err := resourceScope.FindVersion(pinnedVersion)
+					Expect(err).ToNot(HaveOccurred())
+					Expect(found).To(BeTrue())
+					resID := resConf.ID()
+
+					found, err = resource.PinVersion(resID)
+					Expect(found).To(BeTrue())
+					Expect(err).ToNot(HaveOccurred())
+				})
+
+				It("should not change the pinned version", func() {
+					config.Resources[0].Name = "pinned-resource"
+					config.Resources[0].OldName = "some-resource"
+					config.Jobs[0].PlanSequence = []atc.Step{
+						{
+							Config: &atc.GetStep{
+								Name:     "some-input",
+								Resource: "pinned-resource",
+								Params: atc.Params{
+									"some-param": "some-value",
+								},
+								Passed:  []string{"job-1", "job-2"},
+								Trigger: true,
+							},
+						},
+					}
+
+					updatedPipeline, _, err := team.SavePipeline(pipelineName, config, pipeline.ConfigVersion(), false)
+					Expect(err).ToNot(HaveOccurred())
+
+					updatedResource, _, _ := updatedPipeline.Resource("pinned-resource")
+					Expect(updatedResource.ID()).To(Equal(resource.ID()))
+					Expect(updatedResource.APIPinnedVersion()).To(Equal(pinnedVersion))
+				})
+			})
+		})
+
 		It("removes task caches for jobs that are no longer in pipeline", func() {
 			pipeline, _, err := team.SavePipeline(pipelineName, config, 0, false)
 			Expect(err).ToNot(HaveOccurred())
@@ -2110,12 +2439,23 @@ var _ = Describe("Team", func() {
 			Expect(err).ToNot(HaveOccurred())
 			Expect(found).To(BeTrue())
 
+			_, err = taskCacheFactory.FindOrCreate(job.ID(), "some-nested-task", "some-path")
+			Expect(err).ToNot(HaveOccurred())
+
+			_, found, err = taskCacheFactory.Find(job.ID(), "some-nested-task", "some-path")
+			Expect(err).ToNot(HaveOccurred())
+			Expect(found).To(BeTrue())
+
 			config.Jobs = []atc.JobConfig{}
 
 			_, _, err = team.SavePipeline(pipelineName, config, pipeline.ConfigVersion(), false)
 			Expect(err).ToNot(HaveOccurred())
 
 			_, found, err = taskCacheFactory.Find(job.ID(), "some-task", "some-path")
+			Expect(err).ToNot(HaveOccurred())
+			Expect(found).To(BeFalse())
+
+			_, found, err = taskCacheFactory.Find(job.ID(), "some-nested-task", "some-path")
 			Expect(err).ToNot(HaveOccurred())
 			Expect(found).To(BeFalse())
 		})
@@ -2135,13 +2475,22 @@ var _ = Describe("Team", func() {
 			Expect(err).ToNot(HaveOccurred())
 			Expect(found).To(BeTrue())
 
+			_, err = taskCacheFactory.FindOrCreate(job.ID(), "some-nested-task", "some-path")
+			Expect(err).ToNot(HaveOccurred())
+
+			_, found, err = taskCacheFactory.Find(job.ID(), "some-nested-task", "some-path")
+			Expect(err).ToNot(HaveOccurred())
+			Expect(found).To(BeTrue())
+
 			config.Jobs = []atc.JobConfig{
 				{
 					Name: "some-job",
-					Plan: atc.PlanSequence{
+					PlanSequence: []atc.Step{
 						{
-							Task: "some-other-task",
-							File: "some/config/path.yml",
+							Config: &atc.TaskStep{
+								Name:       "some-other-task",
+								ConfigPath: "some/config/path.yml",
+							},
 						},
 					},
 				},
@@ -2151,6 +2500,10 @@ var _ = Describe("Team", func() {
 			Expect(err).ToNot(HaveOccurred())
 
 			_, found, err = taskCacheFactory.Find(job.ID(), "some-task", "some-path")
+			Expect(err).ToNot(HaveOccurred())
+			Expect(found).To(BeFalse())
+
+			_, found, err = taskCacheFactory.Find(job.ID(), "some-nested-task", "some-path")
 			Expect(err).ToNot(HaveOccurred())
 			Expect(found).To(BeFalse())
 		})
@@ -2187,10 +2540,12 @@ var _ = Describe("Team", func() {
 			config.Jobs = []atc.JobConfig{
 				{
 					Name: "some-job",
-					Plan: atc.PlanSequence{
+					PlanSequence: []atc.Step{
 						{
-							Task: "some-other-task",
-							File: "some/config/path.yml",
+							Config: &atc.TaskStep{
+								Name:       "some-other-task",
+								ConfigPath: "some/config/path.yml",
+							},
 						},
 					},
 				},
@@ -2323,17 +2678,21 @@ var _ = Describe("Team", func() {
 				Jobs: atc.JobConfigs{
 					{
 						Name: "job-1",
-						Plan: atc.PlanSequence{
+						PlanSequence: []atc.Step{
 							{
-								Get: "some-resource",
+								Config: &atc.GetStep{
+									Name: "some-resource",
+								},
 							},
 						},
 					},
 					{
 						Name: "job-2",
-						Plan: atc.PlanSequence{
+						PlanSequence: []atc.Step{
 							{
-								Get: "some-resource",
+								Config: &atc.GetStep{
+									Name: "some-resource",
+								},
 							},
 						},
 					},
@@ -2345,36 +2704,46 @@ var _ = Describe("Team", func() {
 						Serial:       true,
 						SerialGroups: []string{"serial-group-1", "serial-group-2"},
 
-						Plan: atc.PlanSequence{
+						PlanSequence: []atc.Step{
 							{
-								Do: &atc.PlanSequence{
-									{
-										Get:      "other-input",
-										Resource: "some-resource",
+								Config: &atc.DoStep{
+									Steps: []atc.Step{
+										{
+											Config: &atc.GetStep{
+												Name:     "other-input",
+												Resource: "some-resource",
+											},
+										},
 									},
 								},
 							},
 							{
-								Get:      "some-input",
-								Resource: "some-resource",
-								Params: atc.Params{
-									"some-param": "some-value",
-								},
-								Passed:  []string{"job-1", "job-2"},
-								Trigger: true,
-							},
-							{
-								Task:       "some-task",
-								Privileged: true,
-								File:       "some/config/path.yml",
-								TaskConfig: &atc.TaskConfig{
-									RootfsURI: "some-image",
+								Config: &atc.GetStep{
+									Name:     "some-input",
+									Resource: "some-resource",
+									Params: atc.Params{
+										"some-param": "some-value",
+									},
+									Passed:  []string{"job-1", "job-2"},
+									Trigger: true,
 								},
 							},
 							{
-								Put: "some-resource",
-								Params: atc.Params{
-									"some-param": "some-value",
+								Config: &atc.TaskStep{
+									Name:       "some-task",
+									Privileged: true,
+									ConfigPath: "some/config/path.yml",
+									Config: &atc.TaskConfig{
+										RootfsURI: "some-image",
+									},
+								},
+							},
+							{
+								Config: &atc.PutStep{
+									Name: "some-resource",
+									Params: atc.Params{
+										"some-param": "some-value",
+									},
 								},
 							},
 						},
@@ -2487,9 +2856,11 @@ var _ = Describe("Team", func() {
 				Jobs: atc.JobConfigs{
 					{
 						Name: "job-2",
-						Plan: atc.PlanSequence{
+						PlanSequence: []atc.Step{
 							{
-								Get: "some-resource",
+								Config: &atc.GetStep{
+									Name: "some-resource",
+								},
 							},
 						},
 					},
@@ -2501,28 +2872,34 @@ var _ = Describe("Team", func() {
 						Serial:       true,
 						SerialGroups: []string{"serial-group-1", "serial-group-2"},
 
-						Plan: atc.PlanSequence{
+						PlanSequence: []atc.Step{
 							{
-								Get:      "some-input",
-								Resource: "some-resource",
-								Params: atc.Params{
-									"some-param": "some-value",
-								},
-								Passed:  []string{"job-2"},
-								Trigger: true,
-							},
-							{
-								Task:       "some-task",
-								Privileged: true,
-								File:       "some/config/path.yml",
-								TaskConfig: &atc.TaskConfig{
-									RootfsURI: "some-image",
+								Config: &atc.GetStep{
+									Name:     "some-input",
+									Resource: "some-resource",
+									Params: atc.Params{
+										"some-param": "some-value",
+									},
+									Passed:  []string{"job-2"},
+									Trigger: true,
 								},
 							},
 							{
-								Put: "some-resource",
-								Params: atc.Params{
-									"some-param": "some-value",
+								Config: &atc.TaskStep{
+									Name:       "some-task",
+									Privileged: true,
+									ConfigPath: "some/config/path.yml",
+									Config: &atc.TaskConfig{
+										RootfsURI: "some-image",
+									},
+								},
+							},
+							{
+								Config: &atc.PutStep{
+									Name: "some-resource",
+									Params: atc.Params{
+										"some-param": "some-value",
+									},
 								},
 							},
 						},
@@ -2738,17 +3115,21 @@ var _ = Describe("Team", func() {
 
 			updatedConfig.Jobs = append(config.Jobs, atc.JobConfig{
 				Name: "new-job",
-				Plan: atc.PlanSequence{
+				PlanSequence: []atc.Step{
 					{
-						Get:      "new-input",
-						Resource: "new-resource",
-						Params: atc.Params{
-							"new-param": "new-value",
+						Config: &atc.GetStep{
+							Name:     "new-input",
+							Resource: "new-resource",
+							Params: atc.Params{
+								"new-param": "new-value",
+							},
 						},
 					},
 					{
-						Task: "some-task",
-						File: "new/config/path.yml",
+						Config: &atc.TaskStep{
+							Name:       "some-task",
+							ConfigPath: "new/config/path.yml",
+						},
 					},
 				},
 			})

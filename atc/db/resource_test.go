@@ -54,9 +54,11 @@ var _ = Describe("Resource", func() {
 				Jobs: atc.JobConfigs{
 					{
 						Name: "job-using-resource",
-						Plan: atc.PlanSequence{
+						PlanSequence: []atc.Step{
 							{
-								Get: "some-other-resource",
+								Config: &atc.GetStep{
+									Name: "some-other-resource",
+								},
 							},
 						},
 					},
@@ -214,7 +216,7 @@ var _ = Describe("Resource", func() {
 			resourceScope, err := resource.SetResourceConfig(atc.Source{"some": "other-repository"}, atc.VersionedResourceTypes{})
 			Expect(err).NotTo(HaveOccurred())
 
-			err = resourceScope.SaveVersions([]atc.Version{
+			err = resourceScope.SaveVersions(nil, []atc.Version{
 				{"disabled": "version"},
 			})
 			Expect(err).ToNot(HaveOccurred())
@@ -377,9 +379,11 @@ var _ = Describe("Resource", func() {
 				Jobs: atc.JobConfigs{
 					{
 						Name: "job-using-resource",
-						Plan: atc.PlanSequence{
+						PlanSequence: []atc.Step{
 							{
-								Get: "some-resource",
+								Config: &atc.GetStep{
+									Name: "some-resource",
+								},
 							},
 						},
 					},
@@ -876,7 +880,7 @@ var _ = Describe("Resource", func() {
 				resourceScope, err = resource.SetResourceConfig(atc.Source{"some": "repository"}, atc.VersionedResourceTypes{})
 				Expect(err).ToNot(HaveOccurred())
 
-				err = resourceScope.SaveVersions([]atc.Version{version})
+				err = resourceScope.SaveVersions(nil, []atc.Version{version})
 				Expect(err).ToNot(HaveOccurred())
 
 				var found bool
@@ -1003,7 +1007,7 @@ var _ = Describe("Resource", func() {
 					{"ref": "v2", "commit": "v2"},
 				}
 
-				err = resourceScope.SaveVersions(originalVersionSlice)
+				err = resourceScope.SaveVersions(nil, originalVersionSlice)
 				Expect(err).ToNot(HaveOccurred())
 
 				resourceVersions = make([]atc.ResourceVersion, 0)
@@ -1124,7 +1128,7 @@ var _ = Describe("Resource", func() {
 					{"ref": "v9"},
 				}
 
-				err = resourceScope.SaveVersions(originalVersionSlice)
+				err = resourceScope.SaveVersions(nil, originalVersionSlice)
 				Expect(err).ToNot(HaveOccurred())
 
 				resourceVersions = make([]atc.ResourceVersion, 0)
@@ -1242,7 +1246,7 @@ var _ = Describe("Resource", func() {
 					resourceScope, err := resource.SetResourceConfig(atc.Source{"some": "other-repository"}, atc.VersionedResourceTypes{})
 					Expect(err).ToNot(HaveOccurred())
 
-					err = resourceScope.SaveVersions([]atc.Version{resourceVersions[9].Version})
+					err = resourceScope.SaveVersions(nil, []atc.Version{resourceVersions[9].Version})
 					Expect(err).ToNot(HaveOccurred())
 
 					historyPage, _, found, err := resource.Versions(db.Page{Limit: 1}, atc.Version{})
@@ -1333,7 +1337,7 @@ var _ = Describe("Resource", func() {
 					{"ref": "v4"}, // id: 3, check_order: 3
 				}
 
-				err = resourceScope.SaveVersions(originalVersionSlice)
+				err = resourceScope.SaveVersions(nil, originalVersionSlice)
 				Expect(err).ToNot(HaveOccurred())
 
 				secondVersionSlice := []atc.Version{
@@ -1342,7 +1346,7 @@ var _ = Describe("Resource", func() {
 					{"ref": "v4"}, // id: 3, check_order: 6
 				}
 
-				err = resourceScope.SaveVersions(secondVersionSlice)
+				err = resourceScope.SaveVersions(nil, secondVersionSlice)
 				Expect(err).ToNot(HaveOccurred())
 
 				for i := 1; i < 5; i++ {
@@ -1503,7 +1507,7 @@ var _ = Describe("Resource", func() {
 			resourceScope, err = resource.SetResourceConfig(atc.Source{"some": "other-repository"}, atc.VersionedResourceTypes{})
 			Expect(err).ToNot(HaveOccurred())
 
-			err = resourceScope.SaveVersions([]atc.Version{
+			err = resourceScope.SaveVersions(nil, []atc.Version{
 				atc.Version{"version": "v1"},
 				atc.Version{"version": "v2"},
 				atc.Version{"version": "v3"},
@@ -1688,6 +1692,8 @@ var _ = Describe("Resource", func() {
 		})
 
 		Context("when we pin a resource that is already pinned to a version (through the config)", func() {
+			var resConf db.ResourceConfigVersion
+
 			BeforeEach(func() {
 				var found bool
 				var err error
@@ -1709,28 +1715,22 @@ var _ = Describe("Resource", func() {
 				resourceScope, err := resource.SetResourceConfig(atc.Source{"some": "repository"}, atc.VersionedResourceTypes{})
 				Expect(err).ToNot(HaveOccurred())
 
-				err = resourceScope.SaveVersions([]atc.Version{
+				err = resourceScope.SaveVersions(nil, []atc.Version{
 					atc.Version{"version": "v1"},
 					atc.Version{"version": "v2"},
 					atc.Version{"version": "v3"},
 				})
 				Expect(err).ToNot(HaveOccurred())
 
-				resConf, found, err := resourceScope.FindVersion(atc.Version{"version": "v1"})
+				resConf, found, err = resourceScope.FindVersion(atc.Version{"version": "v1"})
 				Expect(err).ToNot(HaveOccurred())
 				Expect(found).To(BeTrue())
-
-				found, err = resource.PinVersion(resConf.ID())
-				Expect(found).To(BeTrue())
-				Expect(err).ToNot(HaveOccurred())
-
-				found, err = resource.Reload()
-				Expect(found).To(BeTrue())
-				Expect(err).ToNot(HaveOccurred())
 			})
 
-			It("should return the config pinned version", func() {
-				Expect(resource.CurrentPinnedVersion()).To(Equal(atc.Version{"ref": "abcdef"}))
+			It("should fail to update the pinned version", func() {
+				found, err := resource.PinVersion(resConf.ID())
+				Expect(found).To(BeFalse())
+				Expect(err).To(Equal(db.ErrPinnedThroughConfig))
 			})
 		})
 	})

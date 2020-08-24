@@ -54,6 +54,7 @@ import Test.Html.Selector
 import Time
 import Url
 import UserState exposing (UserState(..))
+import Views.Styles
 
 
 commentButtonBlue : String
@@ -158,20 +159,6 @@ failureRed =
     "#ed4b35"
 
 
-badResponse : Result Http.Error ()
-badResponse =
-    Err <|
-        Http.BadStatus
-            { url = ""
-            , status =
-                { code = 500
-                , message = "server error"
-                }
-            , headers = Dict.empty
-            , body = ""
-            }
-
-
 all : Test
 all =
     describe "resource page"
@@ -213,7 +200,9 @@ all =
                         [ Effects.NavigateTo <|
                             Routes.toString <|
                                 Routes.Dashboard <|
-                                    Routes.Normal Nothing
+                                    { searchType = Routes.Normal ""
+                                    , dashboardView = Routes.ViewNonArchivedPipelines
+                                    }
                         ]
             ]
         , test "has title with resource name" <|
@@ -422,14 +411,13 @@ all =
                             |> Query.children []
                             |> Query.index 0
                             |> Query.has [ text resourceName, tag "h1" ]
-                , test "the text is large and vertically centred" <|
+                , test "the text is vertically centered" <|
                     \_ ->
                         pageHeader
                             |> Query.children []
                             |> Query.index 0
                             |> Query.has
-                                [ style "font-weight" "700"
-                                , style "margin-left" "18px"
+                                [ style "margin-left" "18px"
                                 , style "display" "flex"
                                 , style "align-items" "center"
                                 , style "justify-content" "center"
@@ -471,6 +459,19 @@ all =
                                 , style "justify-content" "center"
                                 , style "margin-left" "24px"
                                 ]
+                , test "does not appear when pipeline is archived" <|
+                    \_ ->
+                        init
+                            |> givenResourceIsNotPinned
+                            |> givenThePipelineIsArchived
+                            |> Application.update
+                                (Msgs.DeliveryReceived <|
+                                    Subscription.ClockTicked Subscription.OneSecond <|
+                                        Time.millisToPosix 1000
+                                )
+                            |> Tuple.first
+                            |> queryView
+                            |> Query.hasNot [ id "last-checked" ]
                 ]
             , describe "pagination"
                 [ test "pagination is last on the right" <|
@@ -735,7 +736,12 @@ all =
                         |> givenResourcePinnedStatically
                         |> givenVersionsWithoutPagination
                         |> clickToDisable versionID
-                        |> Application.handleCallback (Callback.VersionToggled Message.Message.Disable versionID badResponse)
+                        |> Application.handleCallback
+                            (Callback.VersionToggled
+                                Message.Message.Disable
+                                versionID
+                                Data.httpInternalServerError
+                            )
                         |> Tuple.first
                         |> queryView
                         |> Query.find (versionSelector version)
@@ -811,7 +817,7 @@ all =
                             (Callback.VersionToggled
                                 Message.Message.Enable
                                 disabledVersionID
-                                badResponse
+                                Data.httpInternalServerError
                             )
                         |> Tuple.first
                         |> queryView
@@ -1107,6 +1113,13 @@ all =
                             |> queryView
                             |> Query.find [ id "pin-icon" ]
 
+                    pinIconArchived =
+                        init
+                            |> givenResourcePinnedDynamically
+                            |> givenThePipelineIsArchived
+                            |> queryView
+                            |> Query.find [ id "pin-icon" ]
+
                     pinBar =
                         init
                             |> givenResourcePinnedDynamically
@@ -1175,6 +1188,22 @@ all =
                                     Message.Message.Hover <|
                                         Just Message.Message.PinIcon
                                 )
+                , test "mousing over pin icon for archived pipeline does nothing" <|
+                    \_ ->
+                        pinIconArchived
+                            |> Event.simulate Event.mouseEnter
+                            |> Event.toResult
+                            |> Expect.err
+                , test "clicking pin icon for archived pipeline does nothing" <|
+                    \_ ->
+                        pinIconArchived
+                            |> Event.simulate Event.click
+                            |> Event.toResult
+                            |> Expect.err
+                , test "pin icon for archived pipeline has regular cursor" <|
+                    \_ ->
+                        pinIconArchived
+                            |> Query.has [ style "cursor" "default" ]
                 , test "TogglePinIconHover msg causes pin icon to have dark background" <|
                     \_ ->
                         init
@@ -1237,7 +1266,8 @@ all =
                             |> givenResourcePinnedDynamically
                             |> givenVersionsWithoutPagination
                             |> clickToUnpin
-                            |> Application.handleCallback (Callback.VersionUnpinned badResponse)
+                            |> Application.handleCallback
+                                (Callback.VersionUnpinned Data.httpInternalServerError)
                             |> Tuple.first
                             |> queryView
                             |> pinBarHasPinnedState version
@@ -1645,6 +1675,22 @@ all =
                                 (Query.find pinButtonSelector
                                     >> Query.has [ style "background-color" "#1e1d1d" ]
                                 )
+                , describe "when the pipeline is archived" <|
+                    let
+                        setup =
+                            init
+                                |> givenResourceIsNotPinned
+                                |> givenVersionsWithoutPagination
+                                |> givenThePipelineIsArchived
+                                |> queryView
+                    in
+                    [ test "has no pin button" <|
+                        \_ ->
+                            setup |> Query.hasNot pinButtonSelector
+                    , test "has no enable checkbox" <|
+                        \_ ->
+                            setup |> Query.hasNot checkboxSelector
+                    ]
                 ]
             , test "resource refreshes on successful VersionUnpinned msg" <|
                 \_ ->
@@ -1907,8 +1953,8 @@ all =
                                 textarea
                                     |> Query.has
                                         [ style "font-size" "12px"
-                                        , style "font-family" "Inconsolata, monospace"
-                                        , style "font-weight" "700"
+                                        , style "font-family" Views.Styles.fontFamilyDefault
+                                        , style "font-weight" Views.Styles.fontWeightDefault
                                         ]
                         , test "has a max height of 150px" <|
                             \_ ->
@@ -2088,10 +2134,13 @@ all =
                         ]
                     , describe "edit and save buttons' wrapper div" <|
                         let
-                            editSaveWrapper =
+                            setup =
                                 init
                                     |> givenUserIsAuthorized
                                     |> givenResourcePinnedWithComment
+
+                            editSaveWrapper =
+                                setup
                                     |> commentBar
                                     |> Query.find [ id "edit-save-wrapper" ]
                         in
@@ -2105,6 +2154,12 @@ all =
                             \_ ->
                                 editSaveWrapper
                                     |> Query.has [ style "display" "flex", style "justify-content" "flex-end" ]
+                        , test "does not appear if pipeline is archived" <|
+                            \_ ->
+                                setup
+                                    |> givenThePipelineIsArchived
+                                    |> commentBar
+                                    |> Query.hasNot [ id "edit-save-wrapper" ]
                         ]
                     , describe "save button" <|
                         let
@@ -2291,7 +2346,8 @@ all =
                                     |> update
                                         (Message.Message.Click Message.Message.SaveCommentButton)
                                     |> Tuple.first
-                                    |> Application.handleCallback (CommentSet <| badResponse)
+                                    |> Application.handleCallback
+                                        (CommentSet <| Data.httpInternalServerError)
                                     |> Tuple.first
                                     |> iconContainer
                                     |> Query.has [ id "save-button" ]
@@ -2324,7 +2380,8 @@ all =
                                     |> update
                                         (Message.Message.Click Message.Message.SaveCommentButton)
                                     |> Tuple.first
-                                    |> Application.handleCallback (CommentSet <| badResponse)
+                                    |> Application.handleCallback
+                                        (CommentSet <| Data.httpInternalServerError)
                                     |> Tuple.second
                                     |> Common.contains
                                         (Effects.FetchResource
@@ -2632,7 +2689,7 @@ all =
                     , test "clicked button shows unpinned state when pinning fails" <|
                         afterClick
                             >> Application.handleCallback
-                                (Callback.VersionPinned badResponse)
+                                (Callback.VersionPinned Data.httpInternalServerError)
                             >> Tuple.first
                             >> queryView
                             >> Query.find (versionSelector version)
@@ -2776,6 +2833,13 @@ all =
                             |> Query.has
                                 [ style "background" "#1e1d1d" ]
                 ]
+            , test "not displayed when pipeline is archived" <|
+                \_ ->
+                    init
+                        |> givenResourceIsNotPinned
+                        |> givenThePipelineIsArchived
+                        |> queryView
+                        |> Query.hasNot [ class "resource-check-status" ]
             , describe "when unauthenticated"
                 [ defineHoverBehaviour
                     { name = "check button"
@@ -2853,7 +2917,7 @@ all =
                             |> Tuple.first
                             |> checkBar UserStateLoggedOut
                             |> Query.find [ tag "h3" ]
-                            |> Query.has [ text "checking successfully" ]
+                            |> Query.has [ text "checked successfully" ]
                 ]
             , describe "when authorized" <|
                 let
@@ -3169,18 +3233,7 @@ all =
                                 )
                             |> Tuple.first
                             |> Application.handleCallback
-                                (Callback.Checked <|
-                                    Err <|
-                                        Http.BadStatus
-                                            { url = ""
-                                            , status =
-                                                { code = 401
-                                                , message = "unauthorized"
-                                                }
-                                            , headers = Dict.empty
-                                            , body = ""
-                                            }
-                                )
+                                (Callback.Checked <| Data.httpUnauthorized)
                             |> Tuple.second
                             |> Expect.equal [ Effects.RedirectToLogin ]
                 ]
@@ -3652,6 +3705,19 @@ givenUserClicksEditButton =
         >> Tuple.first
 
 
+givenThePipelineIsArchived : Application.Model -> Application.Model
+givenThePipelineIsArchived =
+    Application.handleCallback
+        (Callback.AllPipelinesFetched <|
+            Ok
+                [ Data.pipeline teamName 0
+                    |> Data.withName pipelineName
+                    |> Data.withArchived True
+                ]
+        )
+        >> Tuple.first
+
+
 pressEnterKey :
     Application.Model
     -> ( Application.Model, List Effects.Effect )
@@ -3913,7 +3979,11 @@ session =
     , pipelineRunningKeyframes = flags.pipelineRunningKeyframes
     , expandedTeams = Set.empty
     , pipelines = RemoteData.NotAsked
-    , isSideBarOpen = False
+    , sideBarState =
+        { isOpen = False
+        , width = 275
+        }
+    , draggingSideBar = False
     , screenSize = ScreenSize.Desktop
     , timeZone = Time.utc
     }

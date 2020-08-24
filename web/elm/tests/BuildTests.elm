@@ -425,13 +425,216 @@ all =
                                 ]
                         )
                     |> Tuple.first
-                    |> Application.handleCallback
-                        (Callback.ScrollCompleted (ScrollDirection.ToId "stepid:1") "build-body")
-                    |> Tuple.first
                     |> Application.handleDelivery
                         (EventsReceived <| Ok [])
                     |> Tuple.second
                     |> Common.notContains (Effects.Scroll (ScrollDirection.ToId "stepid:1") "build-body")
+        , test "auto-scroll disallowed before scrolled to highlighted line" <|
+            \_ ->
+                Application.init
+                    flags
+                    { protocol = Url.Http
+                    , host = ""
+                    , port_ = Nothing
+                    , path = "/teams/t/pipelines/p/jobs/j/builds/1"
+                    , query = Nothing
+                    , fragment = Just "Lstepid:1"
+                    }
+                    |> Tuple.first
+                    |> fetchBuild BuildStatusStarted
+                    |> Tuple.first
+                    |> Application.handleCallback
+                        (Callback.PlanAndResourcesFetched 1 <|
+                            Ok <|
+                                ( { id = "stepid"
+                                  , step =
+                                        Concourse.BuildStepTask
+                                            "step"
+                                  }
+                                , { inputs = [], outputs = [] }
+                                )
+                        )
+                    |> Tuple.first
+                    |> Application.handleDelivery
+                        (EventsReceived <|
+                            Ok <|
+                                [ { url = eventsUrl
+                                  , data =
+                                        STModels.StartTask
+                                            { source = "stdout"
+                                            , id = "stepid"
+                                            }
+                                            (Time.millisToPosix 0)
+                                  }
+                                , { url = eventsUrl
+                                  , data =
+                                        STModels.Log
+                                            { source = "stdout"
+                                            , id = "stepid"
+                                            }
+                                            "log message"
+                                            Nothing
+                                  }
+                                ]
+                        )
+                    |> Tuple.first
+                    |> Application.update
+                        (Msgs.Update <|
+                            Message.Message.Scrolled
+                                { scrollHeight = 20
+                                , scrollTop = 10
+                                , clientHeight = 10
+                                }
+                        )
+                    |> Tuple.first
+                    |> Application.handleDelivery
+                        (EventsReceived <| Ok [])
+                    |> Tuple.second
+                    |> Common.notContains (Effects.Scroll ScrollDirection.ToBottom "build-body")
+        , test "auto-scroll disallowed before scrolling away from highlighted line" <|
+            \_ ->
+                Application.init
+                    flags
+                    { protocol = Url.Http
+                    , host = ""
+                    , port_ = Nothing
+                    , path = "/teams/t/pipelines/p/jobs/j/builds/1"
+                    , query = Nothing
+                    , fragment = Just "Lstepid:1"
+                    }
+                    |> Tuple.first
+                    |> fetchBuild BuildStatusStarted
+                    |> Tuple.first
+                    |> Application.handleCallback
+                        (Callback.PlanAndResourcesFetched 1 <|
+                            Ok <|
+                                ( { id = "stepid"
+                                  , step =
+                                        Concourse.BuildStepTask
+                                            "step"
+                                  }
+                                , { inputs = [], outputs = [] }
+                                )
+                        )
+                    |> Tuple.first
+                    |> Application.handleDelivery
+                        (EventsReceived <|
+                            Ok <|
+                                [ { url = eventsUrl
+                                  , data =
+                                        STModels.StartTask
+                                            { source = "stdout"
+                                            , id = "stepid"
+                                            }
+                                            (Time.millisToPosix 0)
+                                  }
+                                , { url = eventsUrl
+                                  , data =
+                                        STModels.Log
+                                            { source = "stdout"
+                                            , id = "stepid"
+                                            }
+                                            "log message"
+                                            Nothing
+                                  }
+                                ]
+                        )
+                    |> Tuple.first
+                    |> Application.update
+                        (Msgs.Update <|
+                            Message.Message.Scrolled
+                                { scrollHeight = 20
+                                , scrollTop = 10
+                                , clientHeight = 10
+                                }
+                        )
+                    |> Tuple.first
+                    |> Application.handleDelivery
+                        (Subscription.ScrolledToId ( "Lstepid:1", "build-body" ))
+                    |> Tuple.first
+                    |> Application.handleDelivery
+                        (EventsReceived <| Ok [])
+                    |> Tuple.second
+                    |> Common.notContains (Effects.Scroll ScrollDirection.ToBottom "build-body")
+        , test "auto-scroll allowed after scrolling away from highlighted line" <|
+            \_ ->
+                Application.init
+                    flags
+                    { protocol = Url.Http
+                    , host = ""
+                    , port_ = Nothing
+                    , path = "/teams/t/pipelines/p/jobs/j/builds/1"
+                    , query = Nothing
+                    , fragment = Just "Lstepid:1"
+                    }
+                    |> Tuple.first
+                    |> fetchBuild BuildStatusStarted
+                    |> Tuple.first
+                    |> Application.handleCallback
+                        (Callback.PlanAndResourcesFetched 1 <|
+                            Ok <|
+                                ( { id = "stepid"
+                                  , step =
+                                        Concourse.BuildStepTask
+                                            "step"
+                                  }
+                                , { inputs = [], outputs = [] }
+                                )
+                        )
+                    |> Tuple.first
+                    |> Application.handleDelivery
+                        (EventsReceived <|
+                            Ok <|
+                                [ { url = eventsUrl
+                                  , data =
+                                        STModels.StartTask
+                                            { source = "stdout"
+                                            , id = "stepid"
+                                            }
+                                            (Time.millisToPosix 0)
+                                  }
+                                , { url = eventsUrl
+                                  , data =
+                                        STModels.Log
+                                            { source = "stdout"
+                                            , id = "stepid"
+                                            }
+                                            "log message"
+                                            Nothing
+                                  }
+                                ]
+                        )
+                    |> Tuple.first
+                    |> Application.handleDelivery
+                        (Subscription.ScrolledToId ( "Lstepid:1", "build-body" ))
+                    |> Tuple.first
+                    |> Application.update
+                        (Msgs.Update <|
+                            Message.Message.Scrolled
+                                { scrollHeight = 20
+                                , scrollTop = 10
+                                , clientHeight = 10
+                                }
+                        )
+                    |> Tuple.first
+                    |> Application.handleDelivery
+                        (EventsReceived <| Ok [])
+                    |> Tuple.second
+                    |> Common.contains (Effects.Scroll ScrollDirection.ToBottom "build-body")
+        , test "subscribes to scrolled to id completion" <|
+            \_ ->
+                Application.init
+                    flags
+                    { protocol = Url.Http
+                    , host = ""
+                    , port_ = Nothing
+                    , path = "/teams/t/pipelines/p/jobs/j/builds/1"
+                    , query = Nothing
+                    , fragment = Just "Lstepid:1"
+                    }
+                    |> Tuple.first
+                    |> Application.subscriptions
+                    |> Common.contains Subscription.OnScrolledToId
         , describe "page title"
             [ test "with a job build" <|
                 \_ ->
@@ -522,18 +725,7 @@ all =
                         (Callback.BuildFetched <| Ok (Data.jobBuild BuildStatusSucceeded))
                     |> Tuple.first
                     |> Application.handleCallback
-                        (Callback.PlanAndResourcesFetched 1 <|
-                            Err <|
-                                Http.BadStatus
-                                    { url = "http://example.com"
-                                    , status =
-                                        { code = 401
-                                        , message = ""
-                                        }
-                                    , headers = Dict.empty
-                                    , body = ""
-                                    }
-                        )
+                        (Callback.PlanAndResourcesFetched 1 <| Data.httpUnauthorized)
                     |> Tuple.first
                     |> Common.queryView
                     |> Query.has [ class "not-authorized" ]
@@ -561,18 +753,7 @@ all =
                         )
                     |> Tuple.first
                     |> Application.handleCallback
-                        (Callback.PlanAndResourcesFetched 1 <|
-                            Err <|
-                                Http.BadStatus
-                                    { url = "http://example.com"
-                                    , status =
-                                        { code = 404
-                                        , message = "not found"
-                                        }
-                                    , headers = Dict.empty
-                                    , body = ""
-                                    }
-                        )
+                        (Callback.PlanAndResourcesFetched 1 <| Data.httpNotFound)
                     |> Tuple.first
                     |> Common.queryView
                     |> Query.has
@@ -605,19 +786,7 @@ all =
                         )
                     |> Tuple.first
                     |> Application.handleCallback
-                        (Callback.BuildPrepFetched 1 <|
-                            Err <|
-                                Http.BadStatus
-                                    { status =
-                                        { code = 401
-                                        , message = "Unauthorized"
-                                        }
-                                    , headers =
-                                        Dict.empty
-                                    , url = ""
-                                    , body = "not authorized"
-                                    }
-                        )
+                        (Callback.BuildPrepFetched 1 <| Data.httpUnauthorized)
                     |> Tuple.first
                     |> Common.queryView
                     |> Query.has [ class "not-authorized" ]
@@ -2597,18 +2766,7 @@ all =
                 , test "if build plan request fails, no event stream" <|
                     preBuildPlanReceived
                         >> Application.handleCallback
-                            (Callback.PlanAndResourcesFetched 1 <|
-                                Err <|
-                                    Http.BadStatus
-                                        { url = "http://example.com"
-                                        , status =
-                                            { code = 401
-                                            , message = ""
-                                            }
-                                        , headers = Dict.empty
-                                        , body = ""
-                                        }
-                            )
+                            (Callback.PlanAndResourcesFetched 1 <| Data.httpUnauthorized)
                         >> Expect.all
                             [ Tuple.second >> Expect.equal []
                             , Tuple.first
@@ -2983,10 +3141,7 @@ all =
                                 )
                             >> Tuple.second
                             >> Common.contains
-                                (Effects.GetViewportOf
-                                    firstOccurrenceLabelID
-                                    Callback.AlwaysShow
-                                )
+                                (Effects.GetViewportOf firstOccurrenceLabelID)
                     , test "mousing off yellow label triggers Hover message" <|
                         fetchPlanWithGetStepWithFirstOccurrence
                             >> hoverFirstOccurrenceLabel
@@ -3032,7 +3187,7 @@ all =
                             )
                         >> Tuple.first
                         >> Application.handleCallback
-                            (Callback.GotViewport firstOccurrenceLabelID Callback.AlwaysShow <|
+                            (Callback.GotViewport firstOccurrenceLabelID <|
                                 Ok
                                     { scene =
                                         { width = 1
@@ -3220,10 +3375,7 @@ all =
                             )
                         >> Tuple.second
                         >> Common.contains
-                            (Effects.GetViewportOf
-                                (Message.Message.StepState "plan")
-                                Callback.AlwaysShow
-                            )
+                            (Effects.GetViewportOf <| Message.Message.StepState "plan")
                 , test "finished task lists initialization duration in tooltip" <|
                     fetchPlanWithGetStep
                         >> Application.handleDelivery
@@ -3265,9 +3417,7 @@ all =
                             )
                         >> Tuple.first
                         >> Application.handleCallback
-                            (Callback.GotViewport (Message.Message.StepState "plan")
-                                Callback.AlwaysShow
-                             <|
+                            (Callback.GotViewport (Message.Message.StepState "plan") <|
                                 Ok
                                     { scene =
                                         { width = 1
@@ -3352,9 +3502,7 @@ all =
                             )
                         >> Tuple.first
                         >> Application.handleCallback
-                            (Callback.GotViewport (Message.Message.StepState "plan")
-                                Callback.AlwaysShow
-                             <|
+                            (Callback.GotViewport (Message.Message.StepState "plan") <|
                                 Ok
                                     { scene =
                                         { width = 1

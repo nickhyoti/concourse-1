@@ -8,6 +8,7 @@ module Build.Build exposing
     , handleDelivery
     , init
     , subscriptions
+    , tooltip
     , update
     , view
     )
@@ -24,6 +25,7 @@ import Build.Shortcuts as Shortcuts
 import Build.StepTree.Models as STModels
 import Build.StepTree.StepTree as StepTree
 import Build.Styles as Styles
+import Colors
 import Concourse
 import Concourse.BuildStatus exposing (BuildStatus(..))
 import DateFormat
@@ -47,7 +49,7 @@ import Http
 import List.Extra
 import Login.Login as Login
 import Maybe.Extra
-import Message.Callback exposing (Callback(..), TooltipPolicy(..))
+import Message.Callback exposing (Callback(..))
 import Message.Effects as Effects exposing (Effect(..))
 import Message.Message exposing (DomID(..), Message(..))
 import Message.ScrollDirection as ScrollDirection
@@ -58,6 +60,7 @@ import SideBar.SideBar as SideBar
 import StrictEvents exposing (onScroll)
 import String
 import Time
+import Tooltip
 import UpdateMsg exposing (UpdateMsg)
 import Views.Icon as Icon
 import Views.LoadingIndicator as LoadingIndicator
@@ -108,6 +111,7 @@ init flags =
           , status = BuildStatusPending
           , output = Empty
           , autoScroll = True
+          , isScrollToIdInProgress = False
           , previousKeyPress = Nothing
           , isTriggerBuildKeyDown = False
           , showHelp = False
@@ -141,6 +145,7 @@ subscriptions model =
     , OnKeyDown
     , OnKeyUp
     , OnElementVisible
+    , OnScrolledToId
     ]
         ++ (case buildEventsUrl of
                 Nothing ->
@@ -298,9 +303,6 @@ handleCallback action ( model, effects ) =
             -- https://github.com/concourse/concourse/issues/3201
             ( model, effects )
 
-        ScrollCompleted (ScrollDirection.ToId _) _ ->
-            ( { model | highlight = Routes.HighlightNothing }, effects )
-
         _ ->
             ( model, effects )
     )
@@ -317,11 +319,10 @@ handleDelivery session delivery ( model, effects ) =
                         HoverState.Hovered (FirstOccurrenceGetStepLabel stepID) ->
                             [ GetViewportOf
                                 (FirstOccurrenceGetStepLabel stepID)
-                                AlwaysShow
                             ]
 
                         HoverState.Hovered (StepState stepID) ->
-                            [ GetViewportOf (StepState stepID) AlwaysShow ]
+                            [ GetViewportOf (StepState stepID) ]
 
                         _ ->
                             []
@@ -355,28 +356,35 @@ handleDelivery session delivery ( model, effects ) =
                 ( newModel, newEffects ) =
                     updateOutput
                         (Build.Output.Output.handleEnvelopes envelopes)
-                        ( if eventSourceClosed && (envelopes |> List.map .data |> List.member STModels.NetworkError) then
-                            { model | authorized = False }
+                        (if eventSourceClosed && (envelopes |> List.map .data |> List.member STModels.NetworkError) then
+                            ( { model | authorized = False }, effects )
 
-                          else
-                            model
-                        , case getScrollBehavior model of
-                            ScrollWindow ->
-                                effects
-                                    ++ [ Effects.Scroll
-                                            ScrollDirection.ToBottom
-                                            bodyId
-                                       ]
+                         else
+                            case getScrollBehavior model of
+                                ScrollWindow ->
+                                    ( model
+                                    , effects
+                                        ++ [ Effects.Scroll
+                                                ScrollDirection.ToBottom
+                                                bodyId
+                                           ]
+                                    )
 
-                            ScrollToID id ->
-                                effects
-                                    ++ [ Effects.Scroll
-                                            (ScrollDirection.ToId id)
-                                            bodyId
-                                       ]
+                                ScrollToID id ->
+                                    ( { model
+                                        | highlight = Routes.HighlightNothing
+                                        , autoScroll = False
+                                        , isScrollToIdInProgress = True
+                                      }
+                                    , effects
+                                        ++ [ Effects.Scroll
+                                                (ScrollDirection.ToId id)
+                                                bodyId
+                                           ]
+                                    )
 
-                            NoScroll ->
-                                effects
+                                NoScroll ->
+                                    ( model, effects )
                         )
             in
             case ( model.hasLoadedYet, buildStatus ) of
@@ -391,6 +399,9 @@ handleDelivery session delivery ( model, effects ) =
 
                 _ ->
                     ( newModel, newEffects )
+
+        ScrolledToId _ ->
+            ( { model | isScrollToIdInProgress = False }, effects )
 
         _ ->
             ( model, effects )
@@ -445,7 +456,11 @@ update msg ( model, effects ) =
             ( model, effects ++ [ NavigateTo <| Routes.toString <| route ] )
 
         Scrolled { scrollHeight, scrollTop, clientHeight } ->
-            ( { model | autoScroll = scrollHeight == scrollTop + clientHeight }
+            ( { model
+                | autoScroll =
+                    (scrollHeight == scrollTop + clientHeight)
+                        && not model.isScrollToIdInProgress
+              }
             , effects
             )
 
@@ -632,13 +647,7 @@ view session model =
             ]
         , Html.div
             (id "page-below-top-bar" :: Views.Styles.pageBelowTopBar route)
-            [ SideBar.view
-                { expandedTeams = session.expandedTeams
-                , pipelines = session.pipelines
-                , hovered = session.hovered
-                , isSideBarOpen = session.isSideBarOpen
-                , screenSize = session.screenSize
-                }
+            [ SideBar.view session
                 (model.job
                     |> Maybe.map
                         (\j ->
@@ -650,6 +659,26 @@ view session model =
             , viewBuildPage session model
             ]
         ]
+
+
+tooltip : Model -> { a | hovered : HoverState.HoverState } -> Maybe Tooltip.Tooltip
+tooltip _ { hovered } =
+    case hovered of
+        HoverState.Tooltip (FirstOccurrenceGetStepLabel _) _ ->
+            Just
+                { body =
+                    Html.div
+                        Styles.firstOccurrenceTooltip
+                        [ Html.text "new version" ]
+                , attachPosition =
+                    { direction = Tooltip.Top
+                    , alignment = Tooltip.Start
+                    }
+                , arrow = Just { size = 5, color = Colors.tooltipBackground }
+                }
+
+        _ ->
+            Nothing
 
 
 breadcrumbs : Model -> Html Message

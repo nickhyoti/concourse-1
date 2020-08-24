@@ -7,6 +7,7 @@ import Concourse exposing (Build, BuildId, Job)
 import Concourse.BuildStatus exposing (BuildStatus(..))
 import Concourse.Pagination exposing (Direction(..))
 import DashboardTests exposing (darkGrey, iconSelector, middleGrey)
+import Data
 import Dict
 import Expect exposing (..)
 import Html.Attributes as Attr
@@ -35,6 +36,7 @@ import Test.Html.Selector as Selector
         )
 import Time
 import Url
+import Views.Styles
 
 
 all : Test
@@ -429,7 +431,7 @@ all =
                             , style "width" "300px"
                             , style "color" "#ecf0f1"
                             , style "font-size" "12px"
-                            , style "font-family" "Inconsolata,monospace"
+                            , style "font-family" Views.Styles.fontFamilyDefault
                             , style "padding" "10px"
                             , style "text-align" "right"
                             ]
@@ -443,6 +445,36 @@ all =
                     }
                 , hoverable = Message.Message.TriggerBuildButton
                 }
+            , describe "archived pipelines" <|
+                let
+                    initWithArchivedPipeline =
+                        init { paused = False, disabled = False }
+                            >> Application.handleCallback
+                                (Callback.AllPipelinesFetched <|
+                                    Ok
+                                        [ Data.pipeline "team" 0
+                                            |> Data.withName "pipeline"
+                                            |> Data.withArchived True
+                                        ]
+                                )
+                            >> Tuple.first
+                in
+                [ test "play/pause button not displayed" <|
+                    initWithArchivedPipeline
+                        >> queryView
+                        >> Query.find [ class "build-header" ]
+                        >> Query.hasNot [ id "pause-toggle" ]
+                , test "header still includes job name" <|
+                    initWithArchivedPipeline
+                        >> queryView
+                        >> Query.find [ class "build-header" ]
+                        >> Query.has [ text "job" ]
+                , test "trigger build button not displayed" <|
+                    initWithArchivedPipeline
+                        >> queryView
+                        >> Query.find [ class "build-header" ]
+                        >> Query.hasNot [ class "trigger-build" ]
+                ]
             , test "page below top bar fills height without scrolling" <|
                 init { disabled = False, paused = False }
                     >> queryView
@@ -627,7 +659,7 @@ all =
                         , style "background-color" darkGrey
                         , style "height" "60px"
                         ]
-            , test "the word 'builds' is bold and indented" <|
+            , test "the word 'builds' is indented" <|
                 init { disabled = False, paused = False }
                     >> queryView
                     >> Query.find [ id "pagination-header" ]
@@ -636,7 +668,6 @@ all =
                     >> Query.has
                         [ containing [ text "builds" ]
                         , style "margin" "0 18px"
-                        , style "font-weight" "700"
                         ]
             , test "pagination lays out horizontally" <|
                 init { disabled = False, paused = False }
@@ -978,19 +1009,7 @@ all =
                         { defaultModel | job = RemoteData.Success someJob }
                     <|
                         Tuple.first <|
-                            Job.handleCallback
-                                (PausedToggled <|
-                                    Err <|
-                                        Http.BadStatus
-                                            { url = "http://example.com"
-                                            , status =
-                                                { code = 401
-                                                , message = ""
-                                                }
-                                            , headers = Dict.empty
-                                            , body = ""
-                                            }
-                                )
+                            Job.handleCallback (PausedToggled <| Data.httpUnauthorized)
                                 ( { defaultModel | job = RemoteData.Success someJob }, [] )
             , test "page is subscribed to one and five second timers" <|
                 init { disabled = False, paused = False }

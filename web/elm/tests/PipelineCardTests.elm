@@ -2,10 +2,37 @@ module PipelineCardTests exposing (all)
 
 import Application.Application as Application
 import Assets
+import Colors
 import Common exposing (defineHoverBehaviour, isColorWithStripes)
 import Concourse.BuildStatus exposing (BuildStatus(..))
 import Concourse.PipelineStatus exposing (PipelineStatus(..), StatusDetails(..))
-import DashboardTests exposing (afterSeconds, amber, apiData, blue, brown, circularJobs, darkGrey, fadedGreen, givenDataAndUser, givenDataUnauthenticated, green, iconSelector, job, jobWithNameTransitionedAt, lightGrey, middleGrey, orange, otherJob, red, running, userWithRoles, whenOnDashboard, white)
+import DashboardTests
+    exposing
+        ( afterSeconds
+        , amber
+        , apiData
+        , blue
+        , brown
+        , circularJobs
+        , darkGrey
+        , fadedGreen
+        , givenDataAndUser
+        , givenDataUnauthenticated
+        , green
+        , iconSelector
+        , job
+        , jobWithNameTransitionedAt
+        , lightGrey
+        , middleGrey
+        , orange
+        , otherJob
+        , red
+        , running
+        , userWithRoles
+        , whenOnDashboard
+        , whenOnDashboardViewingAllPipelines
+        , white
+        )
 import Data
 import Dict
 import Expect exposing (Expectation)
@@ -121,14 +148,11 @@ all =
                         noPipelinesCard
                             >> findHeader
                 in
-                [ test "says 'no pipeline set' in smooth white font" <|
+                [ test "says 'no pipeline set' in white font" <|
                     header
                         >> Expect.all
                             [ Query.has [ text "no pipeline set" ]
-                            , Query.has
-                                [ style "color" white
-                                , style "-webkit-font-smoothing" "antialiased"
-                                ]
+                            , Query.has [ style "color" white ]
                             ]
                 , test "has dark grey background and 12.5px padding" <|
                     header
@@ -203,26 +227,6 @@ all =
                         , containing [ text "pipeline" ]
                         ]
                     |> Query.has [ style "cursor" "move" ]
-        , test "does not have 'move' cursor when searching" <|
-            \_ ->
-                whenOnDashboard { highDensity = False }
-                    |> givenDataUnauthenticated (apiData [ ( "team", [] ) ])
-                    |> Tuple.first
-                    |> Application.handleCallback
-                        (Callback.AllPipelinesFetched <|
-                            Ok
-                                [ Data.pipeline "team" 0 |> Data.withName "pipeline" ]
-                        )
-                    |> Tuple.first
-                    |> Application.update
-                        (ApplicationMsgs.Update <| Msgs.FilterMsg "pipeline")
-                    |> Tuple.first
-                    |> Common.queryView
-                    |> Query.find
-                        [ class "card"
-                        , containing [ text "pipeline" ]
-                        ]
-                    |> Query.hasNot [ style "cursor" "move" ]
         , test "does not have 'move' cursor when rendering based on cache" <|
             \_ ->
                 whenOnDashboard { highDensity = False }
@@ -286,13 +290,12 @@ all =
             [ test "has dark grey background" <|
                 header
                     >> Query.has [ style "background-color" darkGrey ]
-            , test "has larger, spaced-out smooth white text" <|
+            , test "has larger, spaced-out white text" <|
                 header
                     >> Query.has
                         [ style "font-size" "1.5em"
                         , style "letter-spacing" "0.1em"
                         , style "color" white
-                        , style "-webkit-font-smoothing" "antialiased"
                         ]
             , test "has 12.5px padding" <|
                 header
@@ -355,6 +358,24 @@ all =
                             |> Common.queryView
                             |> findBanner
                             |> isSolid lightGrey
+                , test "is dark grey when pipeline is archived" <|
+                    \_ ->
+                        whenOnDashboardViewingAllPipelines { highDensity = False }
+                            |> givenDataUnauthenticated [ { id = 0, name = "team" } ]
+                            |> Tuple.first
+                            |> Application.handleCallback
+                                (Callback.AllPipelinesFetched <|
+                                    Ok
+                                        [ Data.pipeline "team" 0
+                                            |> Data.withName "pipeline"
+                                            |> Data.withArchived True
+                                            |> Data.withPaused True
+                                        ]
+                                )
+                            |> Tuple.first
+                            |> Common.queryView
+                            |> findBanner
+                            |> isSolid Colors.backgroundDark
                 , test "is blue when pipeline is paused" <|
                     \_ ->
                         whenOnDashboard { highDensity = False }
@@ -563,6 +584,24 @@ all =
                                 |> Common.queryView
                                 |> findBanner
                                 |> isSolid lightGrey
+                    , test "is dark grey when pipeline is archived" <|
+                        \_ ->
+                            whenOnDashboardViewingAllPipelines { highDensity = False }
+                                |> givenDataUnauthenticated [ { id = 0, name = "team" } ]
+                                |> Tuple.first
+                                |> Application.handleCallback
+                                    (Callback.AllPipelinesFetched <|
+                                        Ok
+                                            [ Data.pipeline "team" 0
+                                                |> Data.withName "pipeline"
+                                                |> Data.withArchived True
+                                                |> Data.withPaused True
+                                            ]
+                                    )
+                                |> Tuple.first
+                                |> Common.queryView
+                                |> findBanner
+                                |> isSolid Colors.backgroundDark
                     , test "is blue when pipeline is paused" <|
                         \_ ->
                             whenOnDashboard { highDensity = True }
@@ -1093,16 +1132,12 @@ all =
             , describe "left-hand section" <|
                 let
                     findStatusIcon =
-                        Query.find [ class "card-footer" ]
-                            >> Query.children []
-                            >> Query.first
+                        Query.find [ class "pipeline-status" ]
                             >> Query.children []
                             >> Query.first
 
                     findStatusText =
-                        Query.find [ class "card-footer" ]
-                            >> Query.children []
-                            >> Query.first
+                        Query.find [ class "pipeline-status" ]
                             >> Query.children []
                             >> Query.index -1
                 in
@@ -1185,7 +1220,7 @@ all =
                                 |> Query.has
                                     (iconSelector
                                         { size = "20px"
-                                        , image = PipelineStatusUnknown |> Assets.PipelineStatusIcon
+                                        , image = Assets.PipelineStatusIconStale
                                         }
                                         ++ [ style "background-size" "contain" ]
                                     )
@@ -1204,6 +1239,196 @@ all =
                             setup
                                 |> Query.find [ class "card" ]
                                 |> Query.has [ style "opacity" "0.45" ]
+                    ]
+                , describe "when pipeline has no jobs due to a disabled endpoint" <|
+                    let
+                        setup =
+                            whenOnDashboard { highDensity = False }
+                                |> givenDataUnauthenticated
+                                    [ { id = 0, name = "team" } ]
+                                |> Tuple.first
+                                |> Application.handleDelivery
+                                    (CachedJobsReceived <| Ok [ Data.job 0 ])
+                                |> Tuple.first
+                                |> Application.handleCallback
+                                    (Callback.AllPipelinesFetched <|
+                                        Ok
+                                            [ Data.pipeline "team" 0 ]
+                                    )
+                                |> Tuple.first
+                                |> Application.handleCallback
+                                    (Callback.AllJobsFetched <|
+                                        Data.httpNotImplemented
+                                    )
+
+                        domID =
+                            Msgs.PipelineStatusIcon
+                                { teamName = "team"
+                                , pipelineName = "pipeline-0"
+                                }
+                    in
+                    [ test "status icon is faded sync" <|
+                        \_ ->
+                            setup
+                                |> Tuple.first
+                                |> Common.queryView
+                                |> findStatusIcon
+                                |> Query.has
+                                    (iconSelector
+                                        { size = "20px"
+                                        , image = Assets.PipelineStatusIconJobsDisabled
+                                        }
+                                        ++ [ style "background-size" "contain"
+                                           , style "opacity" "0.5"
+                                           ]
+                                    )
+                    , test "status icon is hoverable" <|
+                        \_ ->
+                            setup
+                                |> Tuple.first
+                                |> Common.queryView
+                                |> findStatusIcon
+                                |> Event.simulate Event.mouseEnter
+                                |> Event.expect
+                                    (ApplicationMsgs.Update <|
+                                        Msgs.Hover <|
+                                            Just domID
+                                    )
+                    , test "hovering status icon sends location request" <|
+                        \_ ->
+                            setup
+                                |> Tuple.first
+                                |> Application.update
+                                    (ApplicationMsgs.Update <|
+                                        Msgs.Hover <|
+                                            Just domID
+                                    )
+                                |> Tuple.second
+                                |> Common.contains
+                                    (Effects.GetViewportOf domID)
+                    , test "hovering status icon shows tooltip" <|
+                        \_ ->
+                            setup
+                                |> Tuple.first
+                                |> Application.update
+                                    (ApplicationMsgs.Update <|
+                                        Msgs.Hover <|
+                                            Just domID
+                                    )
+                                |> Tuple.first
+                                |> Application.handleCallback
+                                    (Callback.GotViewport domID
+                                        (Ok
+                                            { scene =
+                                                { width = 1
+                                                , height = 0
+                                                }
+                                            , viewport =
+                                                { width = 1
+                                                , height = 0
+                                                , x = 0
+                                                , y = 0
+                                                }
+                                            }
+                                        )
+                                    )
+                                |> Tuple.first
+                                |> Application.handleCallback
+                                    (Callback.GotElement <|
+                                        Ok
+                                            { scene =
+                                                { width = 0
+                                                , height = 0
+                                                }
+                                            , viewport =
+                                                { width = 0
+                                                , height = 0
+                                                , x = 0
+                                                , y = 0
+                                                }
+                                            , element =
+                                                { x = 0
+                                                , y = 0
+                                                , width = 1
+                                                , height = 1
+                                                }
+                                            }
+                                    )
+                                |> Tuple.first
+                                |> Common.queryView
+                                |> Query.has
+                                    [ style "position" "fixed"
+                                    , containing [ text "automatic job monitoring disabled" ]
+                                    ]
+                    , test "status text says 'no data'" <|
+                        \_ ->
+                            setup
+                                |> Tuple.first
+                                |> Common.queryView
+                                |> findStatusText
+                                |> Query.has [ text "no data" ]
+                    , test "job preview is empty placeholder" <|
+                        \_ ->
+                            setup
+                                |> Tuple.first
+                                |> Common.queryView
+                                |> Query.find [ class "card-body" ]
+                                |> Query.has [ style "background-color" middleGrey ]
+                    , test "job data is cleared" <|
+                        \_ ->
+                            setup
+                                |> Tuple.first
+                                |> Common.queryView
+                                |> Query.find [ class "parallel-grid" ]
+                                |> Query.hasNot [ tag "a" ]
+                    , test "job data is cleared from local cache" <|
+                        \_ ->
+                            setup
+                                |> Tuple.second
+                                |> Common.contains Effects.DeleteCachedJobs
+                    ]
+                , describe "when pipeline is archived" <|
+                    let
+                        setup =
+                            whenOnDashboardViewingAllPipelines { highDensity = False }
+                                |> givenDataUnauthenticated
+                                    [ { id = 0, name = "team" } ]
+                                |> Tuple.first
+                                |> Application.handleCallback
+                                    (Callback.AllPipelinesFetched <|
+                                        Ok
+                                            [ Data.pipeline "team" 0
+                                                |> Data.withArchived True
+                                            ]
+                                    )
+                                |> Tuple.first
+                                |> Application.handleCallback
+                                    (Callback.AllJobsFetched <|
+                                        Ok
+                                            [ Data.job 0 ]
+                                    )
+                    in
+                    [ test "status section is empty" <|
+                        \_ ->
+                            setup
+                                |> Tuple.first
+                                |> Common.queryView
+                                |> Query.find [ class "pipeline-status" ]
+                                |> Query.children []
+                                |> Query.count (Expect.equal 0)
+                    , test "job preview is empty placeholder" <|
+                        \_ ->
+                            setup
+                                |> Tuple.first
+                                |> Common.queryView
+                                |> Query.find [ class "card-body" ]
+                                |> Query.has [ style "background-color" middleGrey ]
+                    , test "there is no pause button" <|
+                        \_ ->
+                            setup
+                                |> Tuple.first
+                                |> Common.queryView
+                                |> Query.hasNot [ class "pause-toggle" ]
                     ]
                 , describe "when pipeline is pending" <|
                     [ test "status icon is grey" <|
@@ -1390,21 +1615,6 @@ all =
                                 }
                                 ++ [ style "background-size" "contain" ]
 
-                        tooltipAbove tooltipText =
-                            [ style "position" "relative"
-                            , containing
-                                [ tag "div"
-                                , containing [ text tooltipText ]
-                                , style "background-color" "#9b9b9b"
-                                , style "position" "absolute"
-                                , style "bottom" "100%"
-                                , style "white-space" "nowrap"
-                                , style "padding" "2.5px"
-                                , style "margin-bottom" "5px"
-                                , style "right" "-150%"
-                                ]
-                            ]
-
                         openEyeClickable setup =
                             [ defineHoverBehaviour
                                 { name = "open eye toggle"
@@ -1430,7 +1640,6 @@ all =
                                             ++ [ style "opacity" "1"
                                                , style "cursor" "pointer"
                                                ]
-                                            ++ tooltipAbove "hide pipeline"
                                     }
                                 }
                             , test "has click handler" <|
@@ -1535,17 +1744,7 @@ all =
                                             (Callback.VisibilityChanged
                                                 Msgs.Hide
                                                 pipelineId
-                                             <|
-                                                Err <|
-                                                    Http.BadStatus
-                                                        { url = "http://example.com"
-                                                        , status =
-                                                            { code = 500
-                                                            , message = ""
-                                                            }
-                                                        , headers = Dict.empty
-                                                        , body = ""
-                                                        }
+                                                Data.httpInternalServerError
                                             )
                                         |> Tuple.first
                                         |> visibilityToggle
@@ -1566,17 +1765,7 @@ all =
                                             (Callback.VisibilityChanged
                                                 Msgs.Hide
                                                 pipelineId
-                                             <|
-                                                Err <|
-                                                    Http.BadStatus
-                                                        { url = "http://example.com"
-                                                        , status =
-                                                            { code = 401
-                                                            , message = "unauthorized"
-                                                            }
-                                                        , headers = Dict.empty
-                                                        , body = ""
-                                                        }
+                                                Data.httpUnauthorized
                                             )
                                         |> Tuple.second
                                         |> Expect.equal
@@ -1646,7 +1835,6 @@ all =
                                             ++ [ style "opacity" "1"
                                                , style "cursor" "pointer"
                                                ]
-                                            ++ tooltipAbove "expose pipeline"
                                     }
                                 }
                             , test "has click handler" <|
@@ -1751,17 +1939,7 @@ all =
                                             (Callback.VisibilityChanged
                                                 Msgs.Expose
                                                 pipelineId
-                                             <|
-                                                Err <|
-                                                    Http.BadStatus
-                                                        { url = "http://example.com"
-                                                        , status =
-                                                            { code = 500
-                                                            , message = ""
-                                                            }
-                                                        , headers = Dict.empty
-                                                        , body = ""
-                                                        }
+                                                Data.httpInternalServerError
                                             )
                                         |> Tuple.first
                                         |> visibilityToggle
@@ -2228,17 +2406,7 @@ all =
                                         { pipelineName = "pipeline"
                                         , teamName = "team"
                                         }
-                                        (Err <|
-                                            Http.BadStatus
-                                                { url = "http://example.com"
-                                                , status =
-                                                    { code = 401
-                                                    , message = ""
-                                                    }
-                                                , headers = Dict.empty
-                                                , body = ""
-                                                }
-                                        )
+                                        Data.httpUnauthorized
                                     )
                                 |> Tuple.second
                                 |> Expect.equal [ Effects.RedirectToLogin ]
