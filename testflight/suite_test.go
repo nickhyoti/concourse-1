@@ -37,6 +37,7 @@ type suiteConfig struct {
 	ATCUsername string `json:"atc_username"`
 	ATCPassword string `json:"atc_password"`
 	DownloadCLI bool   `json:"download_cli"`
+        caCert	    string `json:"ca_cert"`
 }
 
 var (
@@ -85,6 +86,12 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 	if atcPassword != "" {
 		config.ATCPassword = atcPassword
 	}
+
+	caCert :=  os.Getenv("CA_CERT")
+	if caCert != "" {
+		config.caCert = caCert
+	}
+
 
 	payload, err := json.Marshal(config)
 	Expect(err).ToNot(HaveOccurred())
@@ -186,7 +193,11 @@ func flyIn(dir string, argv ...string) *gexec.Session {
 }
 
 func spawnFlyLogin(target string, args ...string) *gexec.Session {
-	return spawn(config.FlyBin, append([]string{"-t", target, "login", "-c", config.ATCURL, "-u", config.ATCUsername, "-p", config.ATCPassword}, args...)...)
+	if (config.caCert != "") {
+		return spawn(config.FlyBin, append([]string{"-t", target, "login", "-c", config.ATCURL, "--ca-cert", config.caCert, "-u", config.ATCUsername, "-p", config.ATCPassword}, args...)...)
+	} else {
+		return spawn(config.FlyBin, append([]string{"-t", target, "login", "-c", config.ATCURL, "-u", config.ATCUsername, "-p", config.ATCPassword}, args...)...)
+	}
 }
 
 func spawnFly(argv ...string) *gexec.Session {
