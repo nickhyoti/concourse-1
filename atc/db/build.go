@@ -72,6 +72,7 @@ var buildsQuery = psql.Select(`
 		b.team_id,
 		b.status,
 		b.manually_triggered,
+		b.created_by,
 		b.scheduled,
 		b.schema,
 		b.private_plan,
@@ -149,6 +150,7 @@ type Build interface {
 	RerunOf() int
 	RerunOfName() string
 	RerunNumber() int
+	CreatedBy() *string
 
 	LagerData() lager.Data
 	TracingAttrs() tracing.Attrs
@@ -225,6 +227,8 @@ type build struct {
 	resourceTypeName string
 
 	isManuallyTriggered bool
+
+	createdBy *string
 
 	rerunOf     int
 	rerunOfName string
@@ -375,6 +379,7 @@ func (b *build) InputsReady() bool    { return b.inputsReady }
 func (b *build) RerunOf() int         { return b.rerunOf }
 func (b *build) RerunOfName() string  { return b.rerunOfName }
 func (b *build) RerunNumber() int     { return b.rerunNumber }
+func (b *build) CreatedBy() *string   { return b.createdBy }
 
 func (b *build) Reload() (bool, error) {
 	row := buildsQuery.Where(sq.Eq{"b.id": b.id}).
@@ -1759,7 +1764,7 @@ func scanBuild(b *build, row scannable, encryptionStrategy encryption.Strategy) 
 		jobID, resourceID, resourceTypeID, pipelineID, rerunOf, rerunNumber                                 sql.NullInt64
 		schema, privatePlan, jobName, resourceName, resourceTypeName, pipelineName, publicPlan, rerunOfName sql.NullString
 		createTime, startTime, endTime, reapTime                                                            pq.NullTime
-		nonce, spanContext                                                                                  sql.NullString
+		nonce, spanContext, createdBy                                                                       sql.NullString
 		drained, aborted, completed                                                                         bool
 		status                                                                                              string
 		pipelineInstanceVars                                                                                sql.NullString
@@ -1774,6 +1779,7 @@ func scanBuild(b *build, row scannable, encryptionStrategy encryption.Strategy) 
 		&b.teamID,
 		&status,
 		&b.isManuallyTriggered,
+		&createdBy,
 		&b.scheduled,
 		&schema,
 		&privatePlan,
@@ -1867,6 +1873,10 @@ func scanBuild(b *build, row scannable, encryptionStrategy encryption.Strategy) 
 		}
 	}
 
+	if createdBy.Valid {
+		b.createdBy = &createdBy.String
+	}
+
 	return nil
 }
 
@@ -1884,12 +1894,18 @@ func (b *build) saveEvent(tx Tx, event atc.Event) error {
 	return err
 }
 
+func (b *build) isForCheck() bool {
+	return b.resourceTypeID != 0 || b.resourceID != 0
+}
+
 func (b *build) eventsTable() string {
+	if b.isForCheck() {
+		return "check_build_events"
+	}
 	if b.pipelineID != 0 {
 		return fmt.Sprintf("pipeline_build_events_%d", b.pipelineID)
-	} else {
-		return fmt.Sprintf("team_build_events_%d", b.teamID)
 	}
+	return fmt.Sprintf("team_build_events_%d", b.teamID)
 }
 
 func createBuild(tx Tx, build *build, vals map[string]interface{}) error {

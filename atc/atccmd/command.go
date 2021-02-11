@@ -118,6 +118,7 @@ type RunCommand struct {
 	TLSBindPort uint16    `long:"tls-bind-port" description:"Port on which to listen for HTTPS traffic."`
 	TLSCert     flag.File `long:"tls-cert"      description:"File containing an SSL certificate."`
 	TLSKey      flag.File `long:"tls-key"       description:"File containing an RSA private key, used to encrypt HTTPS traffic."`
+	TLSCaCert   flag.File `long:"tls-ca-cert"   description:"File containing the client CA certificate, enables mTLS"`
 
 	LetsEncrypt struct {
 		Enable  bool     `long:"enable-lets-encrypt"   description:"Automatically configure TLS certificates via Let's Encrypt/ACME."`
@@ -252,9 +253,13 @@ type RunCommand struct {
 	BaseResourceTypeDefaults flag.File `long:"base-resource-type-defaults" description:"Base resource type defaults"`
 
 	P2pVolumeStreamingTimeout time.Duration `long:"p2p-volume-streaming-timeout" description:"Timeout value of p2p volume streaming" default:"15m"`
+
+	DisplayUserIdPerConnector map[string]string `long:"display-user-id-per-connector" description:"Define how to display user ID for each authentication connector. Format is <connector>:<fieldname>. Valid field names are user_id, name, username and email, where name maps to claims field username, and username maps to claims field preferred username"`
 }
 
 type Migration struct {
+	lockFactory lock.LockFactory
+
 	Postgres               flag.PostgresConfig `group:"PostgreSQL Configuration" namespace:"postgres"`
 	EncryptionKey          flag.Cipher         `long:"encryption-key"     description:"A 16 or 32 length key used to encrypt sensitive information before storing it in the database."`
 	OldEncryptionKey       flag.Cipher         `long:"old-encryption-key" description:"Encryption key previously used for encrypting sensitive information. If provided without a new key, data is decrypted. If provided with a new key, data is re-encrypted."`
@@ -265,6 +270,14 @@ type Migration struct {
 }
 
 func (m *Migration) Execute(args []string) error {
+	lockConn, err := constructLockConn(defaultDriverName, m.Postgres.ConnectionString())
+	if err != nil {
+		return err
+	}
+	defer lockConn.Close()
+
+	m.lockFactory = lock.NewLockFactory(lockConn, metric.LogLockAcquired, metric.LogLockReleased)
+
 	if m.MigrateToLatestVersion {
 		return m.migrateToLatestVersion()
 	}
@@ -281,14 +294,13 @@ func (m *Migration) Execute(args []string) error {
 		return m.rotateEncryptionKey()
 	}
 	return errors.New("must specify one of `--migrate-to-latest-version`, `--current-db-version`, `--supported-db-version`, `--migrate-db-to-version`, or `--old-encryption-key`")
-
 }
 
 func (cmd *Migration) currentDBVersion() error {
 	helper := migration.NewOpenHelper(
 		defaultDriverName,
 		cmd.Postgres.ConnectionString(),
-		nil,
+		cmd.lockFactory,
 		nil,
 		nil,
 	)
@@ -306,7 +318,7 @@ func (cmd *Migration) supportedDBVersion() error {
 	helper := migration.NewOpenHelper(
 		defaultDriverName,
 		cmd.Postgres.ConnectionString(),
-		nil,
+		cmd.lockFactory,
 		nil,
 		nil,
 	)
@@ -336,7 +348,7 @@ func (cmd *Migration) migrateDBToVersion() error {
 	helper := migration.NewOpenHelper(
 		defaultDriverName,
 		cmd.Postgres.ConnectionString(),
-		nil,
+		cmd.lockFactory,
 		newKey,
 		oldKey,
 	)
@@ -364,7 +376,7 @@ func (cmd *Migration) rotateEncryptionKey() error {
 	helper := migration.NewOpenHelper(
 		defaultDriverName,
 		cmd.Postgres.ConnectionString(),
-		nil,
+		cmd.lockFactory,
 		newKey,
 		oldKey,
 	)
@@ -381,7 +393,7 @@ func (cmd *Migration) migrateToLatestVersion() error {
 	helper := migration.NewOpenHelper(
 		defaultDriverName,
 		cmd.Postgres.ConnectionString(),
-		nil,
+		cmd.lockFactory,
 		nil,
 		nil,
 	)
@@ -554,7 +566,7 @@ func (cmd *RunCommand) Runner(positionalArguments []string) (ifrit.Runner, error
 		return nil, err
 	}
 
-	lockConn, err := cmd.constructLockConn(retryingDriverName)
+	lockConn, err := constructLockConn(retryingDriverName, cmd.Postgres.ConnectionString())
 	if err != nil {
 		return nil, err
 	}
@@ -814,11 +826,17 @@ func (cmd *RunCommand) constructAPIMembers(
 		time.Minute,
 	)
 
+	displayUserIdGenerator, err := skycmd.NewSkyDisplayUserIdGenerator(cmd.DisplayUserIdPerConnector)
+	if err != nil {
+		return nil, err
+	}
+
 	accessFactory := accessor.NewAccessFactory(
 		tokenVerifier,
 		teamsCacher,
 		cmd.SystemClaimKey,
 		cmd.SystemClaimValues,
+		displayUserIdGenerator,
 	)
 
 	middleware := token.NewMiddleware(cmd.Auth.AuthFlags.SecureCookies)
@@ -860,6 +878,7 @@ func (cmd *RunCommand) constructAPIMembers(
 		storage,
 		dbAccessTokenFactory,
 		userFactory,
+		displayUserIdGenerator,
 	)
 	if err != nil {
 		return nil, err
@@ -1178,6 +1197,7 @@ func (cmd *RunCommand) gcComponents(
 	dbBuildFactory := db.NewBuildFactory(gcConn, lockFactory, cmd.GC.OneOffBuildGracePeriod, cmd.GC.FailedGracePeriod)
 	dbResourceConfigFactory := db.NewResourceConfigFactory(gcConn, lockFactory)
 	dbPipelineLifecycle := db.NewPipelineLifecycle(gcConn, lockFactory)
+	dbCheckLifecycle := db.NewCheckLifecycle(gcConn)
 
 	dbVolumeRepository := db.NewVolumeRepository(gcConn)
 
@@ -1202,6 +1222,7 @@ func (cmd *RunCommand) gcComponents(
 		atc.ComponentCollectorCheckSessions:     gc.NewResourceConfigCheckSessionCollector(resourceConfigCheckSessionLifecycle),
 		atc.ComponentCollectorPipelines:         gc.NewPipelineCollector(dbPipelineLifecycle),
 		atc.ComponentCollectorAccessTokens:      gc.NewAccessTokensCollector(dbAccessTokenLifecycle, jwt.DefaultLeeway),
+		atc.ComponentCollectorChecks:            gc.NewChecksCollector(dbCheckLifecycle),
 	}
 
 	var components []RunnableComponent
@@ -1407,6 +1428,20 @@ func (cmd *RunCommand) tlsConfig(logger lager.Logger, dbConn db.Conn) (*tls.Conf
 
 	if cmd.isTLSEnabled() {
 		tlsLogger := logger.Session("tls-enabled")
+
+		if cmd.isMTLSEnabled() {
+			tlsLogger.Debug("mTLS-Enabled")
+			clientCACert, err := ioutil.ReadFile(string(cmd.TLSCaCert))
+			if err != nil {
+				return nil, err
+			}
+			clientCertPool := x509.NewCertPool()
+			clientCertPool.AppendCertsFromPEM(clientCACert)
+
+			tlsConfig.ClientAuth = tls.RequireAndVerifyClientCert
+			tlsConfig.ClientCAs = clientCertPool
+		}
+
 		if cmd.LetsEncrypt.Enable {
 			tlsLogger.Debug("using-autocert-manager")
 
@@ -1584,8 +1619,8 @@ type Closer interface {
 	Close() error
 }
 
-func (cmd *RunCommand) constructLockConn(driverName string) (*sql.DB, error) {
-	dbConn, err := sql.Open(driverName, cmd.Postgres.ConnectionString())
+func constructLockConn(driverName, connectionString string) (*sql.DB, error) {
+	dbConn, err := sql.Open(driverName, connectionString)
 	if err != nil {
 		return nil, err
 	}
@@ -1723,6 +1758,7 @@ func (cmd *RunCommand) constructAuthHandler(
 	storage storage.Storage,
 	accessTokenFactory db.AccessTokenFactory,
 	userFactory db.UserFactory,
+	displayUserIdGenerator atc.DisplayUserIdGenerator,
 ) (http.Handler, error) {
 
 	issuerPath, _ := url.Parse("/sky/issuer")
@@ -1756,6 +1792,7 @@ func (cmd *RunCommand) constructAuthHandler(
 		token.NewClaimsParser(),
 		accessTokenFactory,
 		userFactory,
+		displayUserIdGenerator,
 	), nil
 }
 
@@ -1968,4 +2005,8 @@ func (runner drainRunner) Run(signals <-chan os.Signal, ready chan<- struct{}) e
 type RunnableComponent struct {
 	atc.Component
 	component.Runnable
+}
+
+func (cmd *RunCommand) isMTLSEnabled() bool {
+	return string(cmd.TLSCaCert) != ""
 }
