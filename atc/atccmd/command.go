@@ -161,6 +161,7 @@ type RunCommand struct {
 	GardenRequestTimeout time.Duration `long:"garden-request-timeout" default:"5m" description:"How long to wait for requests to Garden to complete. 0 means no timeout."`
 
 	CLIArtifactsDir flag.Dir `long:"cli-artifacts-dir" description:"Directory containing downloadable CLI binaries."`
+	WebPublicDir    flag.Dir `long:"web-public-dir" description:"Web public/ directory to serve live for local development."`
 
 	Metrics struct {
 		HostName            string            `long:"metrics-host-name" description:"Host string to attach to emitted metrics."`
@@ -355,7 +356,7 @@ func (cmd *Migration) migrateDBToVersion() error {
 
 	err := helper.MigrateToVersion(version)
 	if err != nil {
-		return fmt.Errorf("Could not migrate to version: %d Reason: %s", version, err.Error())
+		return fmt.Errorf("could not migrate to version: %d Reason: %s", version, err.Error())
 	}
 
 	fmt.Println("Successfully migrated to version:", version)
@@ -510,7 +511,7 @@ func (cmd *RunCommand) Runner(positionalArguments []string) (ifrit.Runner, error
 
 	commandSession.Info("start")
 	defer commandSession.Info("finish", lager.Data{
-		"duration": time.Now().Sub(startTime),
+		"duration": time.Since(startTime),
 	})
 
 	atc.EnableGlobalResources = cmd.FeatureFlags.EnableGlobalResources
@@ -1357,7 +1358,7 @@ func (cmd *RunCommand) oldKey() *encryption.Key {
 }
 
 func (cmd *RunCommand) constructWebHandler(logger lager.Logger) (http.Handler, error) {
-	webHandler, err := web.NewHandler(logger)
+	webHandler, err := web.NewHandler(logger, cmd.WebPublicDir.Path())
 	if err != nil {
 		return nil, err
 	}
@@ -1423,8 +1424,7 @@ func (tripper mitmRoundTripper) RoundTrip(req *http.Request) (*http.Response, er
 }
 
 func (cmd *RunCommand) tlsConfig(logger lager.Logger, dbConn db.Conn) (*tls.Config, error) {
-	var tlsConfig *tls.Config
-	tlsConfig = atc.DefaultTLSConfig()
+	tlsConfig := atc.DefaultTLSConfig()
 
 	if cmd.isTLSEnabled() {
 		tlsLogger := logger.Session("tls-enabled")

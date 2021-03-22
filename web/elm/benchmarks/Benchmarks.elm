@@ -131,7 +131,7 @@ buildView session model =
         (id "page-including-top-bar" :: Views.Styles.pageIncludingTopBar)
         [ Html.div
             (id "top-bar-app" :: Views.Styles.topBar False)
-            [ SideBar.hamburgerMenu session
+            [ SideBar.sideBarIcon session
             , TopBar.concourseLogo
             , breadcrumbs session model
             , Login.view session.userState model
@@ -143,6 +143,7 @@ buildView session model =
                     |> Maybe.map
                         (\j ->
                             { pipelineName = j.pipelineName
+                            , pipelineInstanceVars = j.pipelineInstanceVars
                             , teamName = j.teamName
                             }
                         )
@@ -683,6 +684,7 @@ sampleSession =
     , expandedTeamsInAllPipelines = Set.empty
     , collapsedTeamsInFavorites = Set.empty
     , favoritedPipelines = Set.empty
+    , favoritedInstanceGroups = Set.empty
     , hovered = HoverState.NoHover
     , sideBarState =
         { isOpen = False

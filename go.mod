@@ -12,12 +12,12 @@ require (
 	github.com/Masterminds/squirrel v1.1.0
 	github.com/NYTimes/gziphandler v1.1.1
 	github.com/aryann/difflib v0.0.0-20170710044230-e206f873d14a
-	github.com/aws/aws-sdk-go v1.34.9
+	github.com/aws/aws-sdk-go v1.37.33
 	github.com/caarlos0/env v3.5.0+incompatible
 	github.com/cenkalti/backoff v2.2.1+incompatible
 	github.com/cloudfoundry/go-socks5 v0.0.0-20180221174514-54f73bdb8a8e // indirect
 	github.com/cloudfoundry/socks5-proxy v0.0.0-20180530211953-3659db090cb2 // indirect
-	github.com/concourse/baggageclaim v1.10.0
+	github.com/concourse/baggageclaim v1.11.0
 	github.com/concourse/dex v0.3.0
 	github.com/concourse/flag v1.1.0
 	github.com/concourse/go-archive v1.0.1
@@ -31,11 +31,10 @@ require (
 	github.com/containerd/typeurl v0.0.0-20190911142611-5eb25027c9fd
 	github.com/coreos/go-iptables v0.4.5
 	github.com/cppforlife/go-semi-semantic v0.0.0-20160921010311-576b6af77ae4
-	github.com/cyberark/conjur-api-go v0.6.0
+	github.com/cyberark/conjur-api-go v0.7.1
 	github.com/docker/go-events v0.0.0-20190806004212-e31b211e4f1c // indirect
 	github.com/fatih/color v1.9.0
 	github.com/felixge/httpsnoop v1.0.1
-	github.com/gobuffalo/packr v1.13.7
 	github.com/gobwas/glob v0.2.3
 	github.com/goccy/go-yaml v1.8.3
 	github.com/gogo/googleapis v1.3.1 // indirect
@@ -71,7 +70,7 @@ require (
 	github.com/peterhellberg/link v1.0.0
 	github.com/pkg/errors v0.9.1
 	github.com/pkg/term v0.0.0-20190109203006-aa71e9d9e942
-	github.com/prometheus/client_golang v1.7.1
+	github.com/prometheus/client_golang v1.10.0
 	github.com/racksec/srslog v0.0.0-20180709174129-a4725f04ec91
 	github.com/sirupsen/logrus v1.6.0
 	github.com/skratchdot/open-golang v0.0.0-20200116055534-eef842397966
@@ -91,9 +90,8 @@ require (
 	go.opentelemetry.io/otel/exporters/trace/jaeger v0.11.0
 	go.opentelemetry.io/otel/sdk v0.11.0
 	golang.org/x/crypto v0.0.0-20200622213623-75b288015ac9
-	golang.org/x/mod v0.4.0 // indirect
 	golang.org/x/oauth2 v0.0.0-20200902213428-5d25da1a8d43
-	golang.org/x/sync v0.0.0-20201020160332-67f06af15bc9
+	golang.org/x/sync v0.0.0-20201207232520-09787c993a3a
 	golang.org/x/time v0.0.0-20200630173020-3af7569d3a1e
 	google.golang.org/api v0.32.0 // indirect
 	google.golang.org/grpc v1.32.0
@@ -105,6 +103,6 @@ require (
 	sigs.k8s.io/yaml v1.2.0
 )
 
-go 1.13
+go 1.16
 
 replace github.com/docker/distribution v2.7.1+incompatible => github.com/docker/distribution v2.7.1-0.20190205005809-0d3efadf0154+incompatible

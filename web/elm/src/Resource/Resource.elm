@@ -944,7 +944,7 @@ view session model =
         (id "page-including-top-bar" :: Views.Styles.pageIncludingTopBar)
         [ Html.div
             (id "top-bar-app" :: Views.Styles.topBar False)
-            [ SideBar.hamburgerMenu session
+            [ SideBar.sideBarIcon session
             , TopBar.concourseLogo
             , TopBar.breadcrumbs session route
             , Login.view session.userState model
@@ -954,6 +954,7 @@ view session model =
             [ SideBar.view session
                 (Just
                     { pipelineName = model.resourceIdentifier.pipelineName
+                    , pipelineInstanceVars = model.resourceIdentifier.pipelineInstanceVars
                     , teamName = model.resourceIdentifier.teamName
                     }
                 )

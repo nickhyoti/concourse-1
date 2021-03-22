@@ -5,19 +5,19 @@ module SideBar.Styles exposing
     , SidebarElementColor(..)
     , collapseIcon
     , column
-    , hamburgerIcon
-    , hamburgerMenu
+    , favoriteIcon
     , iconGroup
     , instanceGroup
     , instanceGroupBadge
     , opacityAttr
     , pipeline
-    , pipelineFavorite
     , pipelineIcon
     , pipelineName
+    , pipelineTextIcon
     , sectionHeader
     , sideBar
     , sideBarHandle
+    , sideBarMenu
     , starPadding
     , starWidth
     , team
@@ -267,10 +267,10 @@ pipelineName { color, weight } =
     ]
 
 
-hamburgerMenu :
-    { isSideBarOpen : Bool, isClickable : Bool }
+sideBarMenu :
+    Bool
     -> List (Html.Attribute msg)
-hamburgerMenu { isSideBarOpen, isClickable } =
+sideBarMenu isClickable =
     [ style "border-right" <| "1px solid " ++ Colors.border
     , style "opacity" "1"
     , style "cursor" <|
@@ -279,23 +279,7 @@ hamburgerMenu { isSideBarOpen, isClickable } =
 
         else
             "default"
-    , style "background-color" <|
-        if isSideBarOpen then
-            Colors.sideBarBackground
-
-        else
-            Colors.hamburgerClosedBackground
-    ]
-
-
-hamburgerIcon : { isHovered : Bool, isActive : Bool } -> List (Html.Attribute msg)
-hamburgerIcon { isHovered, isActive } =
-    [ style "opacity" <|
-        if isActive || isHovered then
-            "1"
-
-        else
-            "0.5"
+    , style "background-color" Colors.sideBarIconBackground
     ]
 
 
@@ -333,6 +317,19 @@ pipelineIcon asset =
     ]
 
 
+pipelineTextIcon : List (Html.Attribute msg)
+pipelineTextIcon =
+    [ style "height" "18px"
+    , style "width" "18px"
+    , style "margin-left" "28px"
+    , style "flex-shrink" "0"
+    , style "display" "flex"
+    , style "justify-content" "center"
+    , style "align-items" "center"
+    , style "font-size" "16px"
+    ]
+
+
 instanceGroupBadge : { count : Int, color : SidebarElementColor } -> Html.Html msg
 instanceGroupBadge { count, color } =
     let
@@ -360,8 +357,8 @@ instanceGroupBadge { count, color } =
         [ Html.text text ]
 
 
-pipelineFavorite : { filled : Bool, isBright : Bool } -> List (Html.Attribute msg)
-pipelineFavorite fav =
+favoriteIcon : { filled : Bool, isBright : Bool } -> List (Html.Attribute msg)
+favoriteIcon fav =
     [ style "background-image" <|
         Assets.backgroundImage <|
             Just <|

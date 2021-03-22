@@ -640,7 +640,7 @@ view session model =
         (id "page-including-top-bar" :: Views.Styles.pageIncludingTopBar)
         [ Html.div
             (id "top-bar-app" :: Views.Styles.topBar False)
-            [ SideBar.hamburgerMenu session
+            [ SideBar.sideBarIcon session
             , TopBar.concourseLogo
             , breadcrumbs session model
             , Login.view session.userState model
@@ -652,6 +652,7 @@ view session model =
                     |> Maybe.map
                         (\j ->
                             { pipelineName = j.pipelineName
+                            , pipelineInstanceVars = j.pipelineInstanceVars
                             , teamName = j.teamName
                             }
                         )
@@ -831,7 +832,7 @@ tombstone timeZone model =
                 [ class "explanation" ]
                 [ Html.text "This log has been "
                 , Html.a
-                    [ Html.Attributes.href "https://concourse-ci.org/jobs.html#job-build-log-retention" ]
+                    [ Html.Attributes.href "https://concourse-ci.org/concourse-web.html#build-log-retention" ]
                     [ Html.text "reaped." ]
                 ]
             ]

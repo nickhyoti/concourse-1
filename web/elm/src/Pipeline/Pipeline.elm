@@ -18,6 +18,7 @@ import Colors
 import Concourse
 import Concourse.Cli as Cli
 import EffectTransformer exposing (ET)
+import Favorites
 import HoverState
 import Html exposing (Html)
 import Html.Attributes
@@ -48,7 +49,6 @@ import Pipeline.PinMenu.PinMenu as PinMenu
 import Pipeline.Styles as Styles
 import RemoteData exposing (WebData)
 import Routes
-import Set
 import SideBar.SideBar as SideBar
 import StrictEvents exposing (onLeftClickOrShiftLeftClick)
 import Svg
@@ -387,7 +387,7 @@ view session model =
             (id "page-including-top-bar" :: Views.Styles.pageIncludingTopBar)
             [ Html.div
                 (id "top-bar-app" :: Views.Styles.topBar displayPaused)
-                [ SideBar.hamburgerMenu session
+                [ SideBar.sideBarIcon session
                 , TopBar.concourseLogo
                 , TopBar.breadcrumbs session route
                 , PinMenu.viewPinMenu session model
@@ -396,7 +396,9 @@ view session model =
                     [ FavoritedIcon.view
                         { isHovered = HoverState.isHovered (TopBarFavoritedIcon <| getPipelineId model.pipeline) session.hovered
                         , isFavorited =
-                            Set.member (getPipelineId model.pipeline) session.favoritedPipelines
+                            model.pipeline
+                                |> RemoteData.map (Favorites.isPipelineFavorited session)
+                                |> RemoteData.withDefault False
                         , isSideBar = False
                         , domID = TopBarFavoritedIcon <| getPipelineId model.pipeline
                         }
@@ -440,7 +442,8 @@ tooltip model session =
         HoverState.Tooltip (TopBarFavoritedIcon _) _ ->
             let
                 isFavorited =
-                    Set.member (getPipelineId model.pipeline) session.favoritedPipelines
+                    RemoteData.map (Favorites.isPipelineFavorited session) model.pipeline
+                        |> RemoteData.withDefault False
             in
             Just
                 { body =
