@@ -1633,7 +1633,7 @@ func constructLockConn(driverName, connectionString string) (*sql.DB, error) {
 }
 
 func (cmd *RunCommand) chooseBuildContainerStrategy() (worker.ContainerPlacementStrategy, error) {
-	return worker.NewContainerPlacementStrategy(cmd.ContainerPlacementStrategyOptions)
+	return worker.NewChainPlacementStrategy(cmd.ContainerPlacementStrategyOptions)
 }
 
 func (cmd *RunCommand) configureAuthForDefaultTeam(teamFactory db.TeamFactory) error {
@@ -1777,7 +1777,6 @@ func (cmd *RunCommand) constructAuthHandler(
 		Expiration:  cmd.Auth.AuthFlags.Expiration,
 		IssuerURL:   issuerURL.String(),
 		RedirectURL: redirectURL.String(),
-		WebHostURL:  "/sky/issuer",
 		SigningKey:  cmd.Auth.AuthFlags.SigningKey.PrivateKey,
 		Storage:     storage,
 	})

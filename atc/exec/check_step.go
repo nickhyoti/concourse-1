@@ -278,11 +278,13 @@ func (step *CheckStep) runCheck(
 
 	containerSpec := worker.ContainerSpec{
 		ImageSpec: imageSpec,
+		TeamID:    step.metadata.TeamID,
+		Type:      step.containerMetadata.Type,
+
 		BindMounts: []worker.BindMountSource{
 			&worker.CertsVolumeMount{Logger: logger},
 		},
-		TeamID: step.metadata.TeamID,
-		Env:    step.metadata.Env(),
+		Env: step.metadata.Env(),
 	}
 	tracing.Inject(ctx, &containerSpec)
 
@@ -298,24 +300,35 @@ func (step *CheckStep) runCheck(
 		StderrWriter: delegate.Stderr(),
 	}
 
+	chosenWorker, _, err := step.workerPool.SelectWorker(
+		lagerctx.NewContext(ctx, logger),
+		step.containerOwner(resourceConfig),
+		containerSpec,
+		workerSpec,
+		step.strategy,
+		delegate,
+	)
+	if err != nil {
+		return worker.CheckResult{}, err
+	}
+
+	delegate.SelectedWorker(logger, chosenWorker.Name())
+
+	defer func() {
+		step.workerPool.ReleaseWorker(
+			lagerctx.NewContext(ctx, logger),
+			containerSpec,
+			chosenWorker,
+			step.strategy,
+		)
+	}()
+
 	processCtx, cancel, err := MaybeTimeout(ctx, step.plan.Timeout)
 	if err != nil {
 		return worker.CheckResult{}, err
 	}
 
 	defer cancel()
-
-	chosenWorker, err := step.workerPool.SelectWorker(
-		lagerctx.NewContext(processCtx, logger),
-		step.containerOwner(resourceConfig),
-		containerSpec,
-		workerSpec,
-		step.strategy,
-	)
-	if err != nil {
-		return worker.CheckResult{}, err
-	}
-	delegate.SelectedWorker(logger, chosenWorker.Name())
 
 	return chosenWorker.RunCheckStep(
 		lagerctx.NewContext(processCtx, logger),
